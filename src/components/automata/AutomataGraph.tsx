@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { FAState, FATransition } from "@/lib/automata-engine";
 
 interface AutomataGraphProps {
@@ -11,7 +11,7 @@ interface AutomataGraphProps {
   simulationStatus?: "running" | "accepted" | "rejected" | null;
 }
 
-const STATE_RADIUS = 28;
+const STATE_RADIUS = 26;
 
 const AutomataGraph = ({
   states,
@@ -65,38 +65,35 @@ const AutomataGraph = ({
     setDragging(null);
   }, []);
 
-  // Group transitions between same states
   const getTransitionsBetween = (fromId: string, toId: string) =>
     transitions.filter((t) => t.from === fromId && t.to === toId);
 
   const getReverse = (fromId: string, toId: string) =>
     transitions.some((t) => t.from === toId && t.to === fromId);
 
-  // Render transition arrow
   const renderTransition = (fromState: FAState, toState: FAState, symbols: string[], hasReverse: boolean, index: number) => {
     const isSelf = fromState.id === toState.id;
     const key = `${fromState.id}-${toState.id}-${index}`;
 
     if (isSelf) {
-      // Self-loop
       const cx = fromState.x;
-      const cy = fromState.y - STATE_RADIUS - 20;
+      const cy = fromState.y - STATE_RADIUS - 18;
       return (
         <g key={key}>
           <path
-            d={`M ${fromState.x - 12} ${fromState.y - STATE_RADIUS + 2} 
-                C ${cx - 30} ${cy - 25}, ${cx + 30} ${cy - 25}, 
-                ${fromState.x + 12} ${fromState.y - STATE_RADIUS + 2}`}
+            d={`M ${fromState.x - 10} ${fromState.y - STATE_RADIUS + 2} 
+                C ${cx - 28} ${cy - 22}, ${cx + 28} ${cy - 22}, 
+                ${fromState.x + 10} ${fromState.y - STATE_RADIUS + 2}`}
             fill="none"
             stroke="hsl(var(--muted-foreground))"
-            strokeWidth="1.5"
+            strokeWidth="1.2"
             markerEnd="url(#arrowhead)"
           />
           <text
             x={cx}
-            y={cy - 22}
+            y={cy - 20}
             textAnchor="middle"
-            className="fill-primary text-xs font-mono"
+            className="fill-primary text-[11px] font-mono font-medium"
           >
             {symbols.join(", ")}
           </text>
@@ -104,7 +101,6 @@ const AutomataGraph = ({
       );
     }
 
-    // Between states
     const dx = toState.x - fromState.x;
     const dy = toState.y - fromState.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -116,7 +112,7 @@ const AutomataGraph = ({
     const endX = toState.x - nx * (STATE_RADIUS + 4);
     const endY = toState.y - ny * (STATE_RADIUS + 4);
 
-    const curve = hasReverse ? 25 : 0;
+    const curve = hasReverse ? 22 : 0;
     const perpX = -ny * curve;
     const perpY = nx * curve;
     const midX = (startX + endX) / 2 + perpX;
@@ -133,14 +129,14 @@ const AutomataGraph = ({
             : `M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`}
           fill="none"
           stroke="hsl(var(--muted-foreground))"
-          strokeWidth="1.5"
+          strokeWidth="1.2"
           markerEnd="url(#arrowhead)"
         />
         <text
           x={curve === 0 ? (startX + endX) / 2 : labelX}
           y={curve === 0 ? (startY + endY) / 2 - 8 : labelY}
           textAnchor="middle"
-          className="fill-primary text-xs font-mono"
+          className="fill-primary text-[11px] font-mono font-medium"
         >
           {symbols.join(", ")}
         </text>
@@ -148,7 +144,6 @@ const AutomataGraph = ({
     );
   };
 
-  // Collect transitions
   const renderedPairs = new Set<string>();
   const transitionElements: JSX.Element[] = [];
 
@@ -170,7 +165,7 @@ const AutomataGraph = ({
   return (
     <svg
       ref={svgRef}
-      className="w-full h-full bg-background rounded-lg"
+      className="w-full h-full bg-background rounded-xl"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
@@ -191,7 +186,7 @@ const AutomataGraph = ({
           />
         </marker>
         <filter id="glow-active">
-          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feGaussianBlur stdDeviation="3" result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
             <feMergeNode in="SourceGraphic" />
@@ -199,7 +194,6 @@ const AutomataGraph = ({
         </filter>
       </defs>
 
-      {/* Transitions */}
       {transitionElements}
 
       {/* Start arrow */}
@@ -208,19 +202,19 @@ const AutomataGraph = ({
         .map((s) => (
           <g key={`start-${s.id}`}>
             <line
-              x1={s.x - STATE_RADIUS - 35}
+              x1={s.x - STATE_RADIUS - 30}
               y1={s.y}
               x2={s.x - STATE_RADIUS - 4}
               y2={s.y}
-              stroke="hsl(var(--accent))"
-              strokeWidth="2"
+              stroke="hsl(var(--primary))"
+              strokeWidth="1.5"
               markerEnd="url(#arrowhead)"
             />
             <text
-              x={s.x - STATE_RADIUS - 40}
-              y={s.y - 8}
+              x={s.x - STATE_RADIUS - 34}
+              y={s.y - 7}
               textAnchor="end"
-              className="fill-accent text-[10px] font-mono"
+              className="fill-primary text-[9px] font-mono"
             >
               start
             </text>
@@ -237,15 +231,15 @@ const AutomataGraph = ({
 
         if (isActive && simulationStatus === "accepted") {
           strokeColor = "hsl(var(--success))";
-          fillColor = "hsl(160 84% 39% / 0.15)";
+          fillColor = "hsl(152 60% 40% / 0.1)";
         } else if (isActive && simulationStatus === "rejected") {
           strokeColor = "hsl(var(--destructive))";
-          fillColor = "hsl(0 84% 60% / 0.15)";
+          fillColor = "hsl(0 72% 51% / 0.1)";
         } else if (isActive) {
           strokeColor = "hsl(var(--primary))";
-          fillColor = "hsl(187 80% 48% / 0.15)";
+          fillColor = "hsl(220 70% 50% / 0.08)";
         } else if (isSelected) {
-          strokeColor = "hsl(var(--accent))";
+          strokeColor = "hsl(var(--primary))";
         }
 
         return (
@@ -255,7 +249,6 @@ const AutomataGraph = ({
             onMouseDown={(e) => handleMouseDown(e, state.id)}
             filter={isActive ? "url(#glow-active)" : undefined}
           >
-            {/* Accept state outer ring */}
             {state.isAccept && (
               <circle
                 cx={state.x}
@@ -263,25 +256,23 @@ const AutomataGraph = ({
                 r={STATE_RADIUS + 4}
                 fill="none"
                 stroke={strokeColor}
-                strokeWidth="1.5"
+                strokeWidth="1.2"
               />
             )}
-            {/* Main circle */}
             <circle
               cx={state.x}
               cy={state.y}
               r={STATE_RADIUS}
               fill={fillColor}
               stroke={strokeColor}
-              strokeWidth="2"
+              strokeWidth="1.5"
             />
-            {/* Label */}
             <text
               x={state.x}
               y={state.y + 1}
               textAnchor="middle"
               dominantBaseline="middle"
-              className="fill-foreground text-xs font-mono font-medium pointer-events-none select-none"
+              className="fill-foreground text-[11px] font-mono font-medium pointer-events-none select-none"
             >
               {state.label}
             </text>
