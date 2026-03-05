@@ -4,60 +4,60 @@
 
 @layer base {
   :root {
-    --background: 225 40% 6%;
-    --foreground: 210 40% 93%;
+    --background: 0 0% 100%;
+    --foreground: 220 20% 14%;
 
-    --card: 225 35% 10%;
-    --card-foreground: 210 40% 93%;
+    --card: 0 0% 99%;
+    --card-foreground: 220 20% 14%;
 
-    --popover: 225 35% 10%;
-    --popover-foreground: 210 40% 93%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 14%;
 
-    --primary: 187 80% 48%;
-    --primary-foreground: 225 40% 4%;
+    --primary: 220 70% 50%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 232 30% 18%;
-    --secondary-foreground: 210 40% 90%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 20% 25%;
 
-    --muted: 225 25% 14%;
-    --muted-foreground: 215 20% 55%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 46%;
 
-    --accent: 38 92% 50%;
-    --accent-foreground: 225 40% 4%;
+    --accent: 220 14% 93%;
+    --accent-foreground: 220 20% 14%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 225 25% 18%;
-    --input: 225 25% 18%;
-    --ring: 187 80% 48%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 220 70% 50%;
 
-    --radius: 0.75rem;
+    --radius: 0.625rem;
 
-    --sidebar-background: 225 38% 8%;
-    --sidebar-foreground: 210 30% 70%;
-    --sidebar-primary: 187 80% 48%;
-    --sidebar-primary-foreground: 225 40% 4%;
-    --sidebar-accent: 225 30% 14%;
-    --sidebar-accent-foreground: 210 40% 93%;
-    --sidebar-border: 225 25% 15%;
-    --sidebar-ring: 187 80% 48%;
+    --sidebar-background: 0 0% 99%;
+    --sidebar-foreground: 220 10% 46%;
+    --sidebar-primary: 220 70% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 220 20% 14%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 220 70% 50%;
 
     /* Custom tokens */
-    --success: 160 84% 39%;
-    --success-foreground: 160 84% 95%;
+    --success: 152 60% 40%;
+    --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 38 92% 10%;
-    --info: 210 100% 56%;
-    --info-foreground: 210 100% 95%;
+    --info: 210 80% 52%;
+    --info-foreground: 0 0% 100%;
 
-    --glow-primary: 0 0 20px hsl(187 80% 48% / 0.3);
-    --glow-accent: 0 0 20px hsl(38 92% 50% / 0.3);
-    --glow-success: 0 0 20px hsl(160 84% 39% / 0.3);
+    --glow-primary: 0 1px 3px hsl(220 70% 50% / 0.08);
+    --glow-accent: 0 1px 3px hsl(38 92% 50% / 0.08);
+    --glow-success: 0 1px 3px hsl(152 60% 40% / 0.08);
 
-    --font-heading: 'Space Grotesk', sans-serif;
+    --font-heading: 'Inter', 'Space Grotesk', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
-    --font-body: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', 'Space Grotesk', sans-serif;
   }
 }
 
@@ -69,6 +69,8 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -82,7 +84,7 @@
 
 @layer components {
   .glass-panel {
-    @apply bg-card/80 backdrop-blur-xl border border-border/50 rounded-lg;
+    @apply bg-card border border-border rounded-xl shadow-sm;
   }
 
   .glow-primary {
@@ -102,38 +104,38 @@
   }
 
   .state-node:hover {
-    filter: brightness(1.2);
+    filter: brightness(0.97);
   }
 
   .state-active {
-    filter: drop-shadow(0 0 12px hsl(187 80% 48% / 0.6));
+    filter: drop-shadow(0 0 8px hsl(220 70% 50% / 0.3));
   }
 
   .state-accept {
-    filter: drop-shadow(0 0 8px hsl(160 84% 39% / 0.4));
+    filter: drop-shadow(0 0 6px hsl(152 60% 40% / 0.25));
   }
 
   .module-card {
-    @apply glass-panel p-6 transition-all duration-300 cursor-pointer;
+    @apply glass-panel p-5 transition-all duration-200 cursor-pointer hover:shadow-md;
   }
 
   .module-card:hover {
-    @apply border-primary/50;
-    box-shadow: var(--glow-primary);
-    transform: translateY(-2px);
+    @apply border-primary/30;
+    transform: translateY(-1px);
   }
 
   .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-info;
   }
 
   .nav-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200;
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150;
     @apply text-muted-foreground hover:text-foreground hover:bg-muted;
   }
 
   .nav-link.active {
-    @apply text-primary bg-primary/10 border-l-2 border-primary;
+    @apply text-primary font-semibold;
+    background-color: hsl(var(--primary) / 0.08);
   }
 
   .simulation-tape {
@@ -141,36 +143,64 @@
   }
 
   .tape-cell {
-    @apply w-10 h-10 flex items-center justify-center border border-border text-sm font-mono;
+    @apply w-10 h-10 flex items-center justify-center border border-border text-sm font-mono rounded;
     @apply transition-all duration-200;
   }
 
   .tape-cell.active {
-    @apply border-primary bg-primary/20 text-primary font-bold;
+    @apply border-primary bg-primary/10 text-primary font-bold;
     box-shadow: var(--glow-primary);
   }
 
   .tape-cell.accepted {
-    @apply border-success bg-success/20 text-success;
+    @apply border-success bg-success/10 text-success;
   }
 
   .tape-cell.rejected {
-    @apply border-destructive bg-destructive/20 text-destructive;
+    @apply border-destructive bg-destructive/10 text-destructive;
   }
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: hsl(var(--background));
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--border));
-  border-radius: 3px;
+  border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
+}
+
+/* Markdown prose in AI chat */
+.ai-prose h1, .ai-prose h2, .ai-prose h3 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  margin-top: 0.75em;
+  margin-bottom: 0.25em;
+}
+.ai-prose p { margin: 0.4em 0; }
+.ai-prose ul, .ai-prose ol { padding-left: 1.25em; margin: 0.4em 0; }
+.ai-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: hsl(var(--muted));
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.ai-prose pre {
+  background: hsl(var(--muted));
+  padding: 0.75em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.ai-prose pre code {
+  background: none;
+  padding: 0;
 }

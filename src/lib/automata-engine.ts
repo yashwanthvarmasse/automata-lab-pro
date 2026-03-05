@@ -60,7 +60,7 @@ export function epsilonClosure(
   return Array.from(closure);
 }
 
-// Move function: given states and symbol, return reachable states
+// Move function
 export function move(
   stateIds: string[],
   symbol: string,
@@ -75,7 +75,7 @@ export function move(
   return Array.from(result);
 }
 
-// Simulate string on automaton (supports NFA with epsilon)
+// Simulate string on automaton
 export function simulateString(
   automaton: Automaton,
   input: string
@@ -118,7 +118,6 @@ export function simulateString(
     });
   }
 
-  // If empty string
   if (input.length === 0) {
     const accepted = currentStates.some((sid) =>
       automaton.states.find((s) => s.id === sid)?.isAccept
@@ -151,7 +150,7 @@ export function generateTransitionTable(
   return table;
 }
 
-// NFA to DFA conversion (Subset Construction)
+// NFA to DFA conversion (Subset Construction) — with q0, q1, q2... naming
 export function nfaToDfa(automaton: Automaton): Automaton {
   const startState = automaton.states.find((s) => s.isStart);
   if (!startState) return { states: [], transitions: [], alphabet: [] };
@@ -196,23 +195,31 @@ export function nfaToDfa(automaton: Automaton): Automaton {
     });
   }
 
-  // Create DFA states
+  // Create DFA states with q0, q1, q2... labels
   const stateKeys = Array.from(dfaStatesMap.keys());
   const angleStep = (2 * Math.PI) / Math.max(stateKeys.length, 1);
   const radius = Math.min(150, stateKeys.length * 30);
+
+  // Build label map: show combined NFA state names for subset construction
+  const stateLabels = new Map<string, string>();
+  stateKeys.forEach((key, i) => {
+    const nfaIds = dfaStatesMap.get(key)!;
+    const nfaLabels = nfaIds
+      .map((sid) => automaton.states.find((s) => s.id === sid)?.label || sid)
+      .join("");
+    // Use q0, q1... as primary label with NFA subset as tooltip/secondary
+    stateLabels.set(key, `q${i}`);
+  });
 
   const dfaStates: FAState[] = stateKeys.map((key, i) => {
     const nfaIds = dfaStatesMap.get(key)!;
     const isAccept = nfaIds.some((sid) =>
       automaton.states.find((s) => s.id === sid)?.isAccept
     );
-    const labels = nfaIds
-      .map((sid) => automaton.states.find((s) => s.id === sid)?.label || sid)
-      .join(",");
 
     return {
       id: key,
-      label: `{${labels}}`,
+      label: `q${i}`,
       x: 300 + radius * Math.cos(angleStep * i - Math.PI / 2),
       y: 250 + radius * Math.sin(angleStep * i - Math.PI / 2),
       isStart: key === startKey,
@@ -223,14 +230,112 @@ export function nfaToDfa(automaton: Automaton): Automaton {
   return { states: dfaStates, transitions: dfaTransitions, alphabet };
 }
 
+// DFA Minimization (Hopcroft's algorithm)
+export function minimizeDFA(automaton: Automaton): Automaton {
+  const { states, transitions, alphabet: inputAlphabet } = automaton;
+  const alphabet = inputAlphabet.length > 0 ? inputAlphabet : getAlphabet(transitions);
+  
+  if (states.length === 0) return automaton;
+
+  // Build transition map
+  const transMap = new Map<string, Map<string, string>>();
+  states.forEach(s => transMap.set(s.id, new Map()));
+  transitions.forEach(t => {
+    transMap.get(t.from)?.set(t.symbol, t.to);
+  });
+
+  // Initial partition: accept vs non-accept
+  const acceptIds = new Set(states.filter(s => s.isAccept).map(s => s.id));
+  const nonAcceptIds = new Set(states.filter(s => !s.isAccept).map(s => s.id));
+
+  let partitions: Set<string>[] = [];
+  if (acceptIds.size > 0) partitions.push(acceptIds);
+  if (nonAcceptIds.size > 0) partitions.push(nonAcceptIds);
+
+  // Refine partitions
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const newPartitions: Set<string>[] = [];
+    
+    for (const partition of partitions) {
+      const splits = new Map<string, Set<string>>();
+      
+      for (const stateId of partition) {
+        // Build signature: for each symbol, which partition does the target belong to?
+        const sig = alphabet.map(sym => {
+          const target = transMap.get(stateId)?.get(sym);
+          if (!target) return -1;
+          return partitions.findIndex(p => p.has(target));
+        }).join(",");
+        
+        if (!splits.has(sig)) splits.set(sig, new Set());
+        splits.get(sig)!.add(stateId);
+      }
+      
+      if (splits.size > 1) changed = true;
+      for (const group of splits.values()) {
+        newPartitions.push(group);
+      }
+    }
+    
+    partitions = newPartitions;
+  }
+
+  // Build minimized DFA
+  const stateToPartition = new Map<string, number>();
+  partitions.forEach((p, i) => {
+    for (const sid of p) stateToPartition.set(sid, i);
+  });
+
+  const angleStep = (2 * Math.PI) / Math.max(partitions.length, 1);
+  const radius = Math.min(150, partitions.length * 35);
+
+  const minStates: FAState[] = partitions.map((partition, i) => {
+    const representative = states.find(s => partition.has(s.id))!;
+    return {
+      id: `mq${i}`,
+      label: `q${i}`,
+      x: 300 + radius * Math.cos(angleStep * i - Math.PI / 2),
+      y: 250 + radius * Math.sin(angleStep * i - Math.PI / 2),
+      isStart: Array.from(partition).some(sid => states.find(s => s.id === sid)?.isStart),
+      isAccept: Array.from(partition).some(sid => states.find(s => s.id === sid)?.isAccept),
+    };
+  });
+
+  const minTransitions: FATransition[] = [];
+  const seenTrans = new Set<string>();
+  let tCounter = 0;
+
+  partitions.forEach((partition, i) => {
+    const representative = Array.from(partition)[0];
+    alphabet.forEach(sym => {
+      const target = transMap.get(representative)?.get(sym);
+      if (target === undefined) return;
+      const targetPartition = stateToPartition.get(target)!;
+      const key = `${i}-${sym}-${targetPartition}`;
+      if (seenTrans.has(key)) return;
+      seenTrans.add(key);
+      minTransitions.push({
+        id: `mt_${tCounter++}`,
+        from: `mq${i}`,
+        to: `mq${targetPartition}`,
+        symbol: sym,
+      });
+    });
+  });
+
+  return { states: minStates, transitions: minTransitions, alphabet };
+}
+
 // Create a sample DFA
 export function createSampleDFA(): Automaton {
   return {
     states: [
-      { id: "q0", label: "q₀", x: 150, y: 200, isStart: true, isAccept: false },
-      { id: "q1", label: "q₁", x: 350, y: 120, isStart: false, isAccept: false },
-      { id: "q2", label: "q₂", x: 550, y: 200, isStart: false, isAccept: true },
-      { id: "q3", label: "q₃", x: 350, y: 320, isStart: false, isAccept: false },
+      { id: "q0", label: "q0", x: 150, y: 200, isStart: true, isAccept: false },
+      { id: "q1", label: "q1", x: 350, y: 120, isStart: false, isAccept: false },
+      { id: "q2", label: "q2", x: 550, y: 200, isStart: false, isAccept: true },
+      { id: "q3", label: "q3", x: 350, y: 320, isStart: false, isAccept: false },
     ],
     transitions: [
       { id: "t1", from: "q0", to: "q1", symbol: "0" },
