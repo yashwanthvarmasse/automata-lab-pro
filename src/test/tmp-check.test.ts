@@ -41,7 +41,6 @@ describe("tm", () => {
   it("anbn", () => {
     const p = TM_SAMPLES[2].build();
     expect(runTM(initTM(p.states, p.transitions, "000111")).at(-1)!.status).toBe("accepted");
-    expect(runTM(initTM(p.states, p.transitions, "0011 1".replace(" ",""))).at(-1)!.status).toBe("accepted");
     expect(runTM(initTM(p.states, p.transitions, "0011")).at(-1)!.status).toBe("accepted");
     expect(runTM(initTM(p.states, p.transitions, "0101")).at(-1)!.status).toBe("rejected");
   });
