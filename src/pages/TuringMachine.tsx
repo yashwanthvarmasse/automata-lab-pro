@@ -8,12 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import {
   initTM,
   stepTM,
-  sampleTM,
+  TM_SAMPLES,
   type TMState,
   type TMTransition,
   type TMConfig,
   type TMStep,
 } from "@/lib/turing-engine";
+
 
 const TuringMachine = () => {
   const [states, setStates] = useState<TMState[]>([]);
@@ -33,11 +34,14 @@ const TuringMachine = () => {
   const [newWrite, setNewWrite] = useState("");
   const [newDir, setNewDir] = useState<"L" | "R" | "S">("R");
 
+  const [sampleIdx, setSampleIdx] = useState(0);
+
   useEffect(() => {
-    const sample = sampleTM();
+    const sample = TM_SAMPLES[0].build();
     setStates(sample.states);
     setTransitions(sample.transitions);
   }, []);
+
 
   // Auto-run
   useEffect(() => {
@@ -100,13 +104,16 @@ const TuringMachine = () => {
     setIsRunning(false);
   }, []);
 
-  const handleLoadSample = useCallback(() => {
-    const sample = sampleTM();
+  const handleLoadSample = useCallback((idx: number) => {
+    const def = TM_SAMPLES[idx];
+    const sample = def.build();
+    setSampleIdx(idx);
     setStates(sample.states);
     setTransitions(sample.transitions);
-    setTapeInput("1011");
+    setTapeInput(def.input);
     handleReset();
   }, [handleReset]);
+
 
   const addState = useCallback(() => {
     const idx = states.length;
@@ -174,11 +181,18 @@ const TuringMachine = () => {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleLoadSample}>
-            <Upload className="w-3 h-3 mr-2" /> Sample (Binary Increment)
-          </Button>
+        <div className="flex items-center gap-2">
+          <Upload className="w-3 h-3 text-muted-foreground" />
+          <Select value={String(sampleIdx)} onValueChange={v => handleLoadSample(Number(v))}>
+            <SelectTrigger className="h-8 w-52 text-xs"><SelectValue placeholder="Load sample" /></SelectTrigger>
+            <SelectContent>
+              {TM_SAMPLES.map((s, i) => (
+                <SelectItem key={s.name} value={String(i)} className="text-xs">{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+
       </div>
 
       <div className="flex flex-1 overflow-hidden">
