@@ -442,3 +442,191 @@ export function sampleCFG2(): string {
 T → T*F | F
 F → (E) | a`;
 }
+
+// ---------------------------------------------------------------------------
+// Parse trees, derivations and language generation
+// ---------------------------------------------------------------------------
+
+export interface ParseTreeNode {
+  symbol: string;
+  span: string;
+  children: ParseTreeNode[];
+}
+
+interface BackPointer {
+  left?: { nt: string; row: number; col: number };
+  right?: { nt: string; row: number; col: number };
+  terminal?: string;
+}
+
+/** CYK with backpointers so a parse tree can be reconstructed. */
+export function cykParseWithTree(
+  cfg: CFG,
+  input: string
+): CYKResult & { tree: ParseTreeNode | null } {
+  const n = input.length;
+  if (n === 0) {
+    const accepted = cfg.productions.some(p => p.head === cfg.startSymbol && p.body.length === 0);
+    return { table: [], accepted, tree: accepted ? { symbol: cfg.startSymbol, span: "ε", children: [] } : null };
+  }
+
+  const table: Set<string>[][] = Array.from({ length: n }, () =>
+    Array.from({ length: n }, () => new Set<string>())
+  );
+  const back: Map<string, BackPointer>[][] = Array.from({ length: n }, () =>
+    Array.from({ length: n }, () => new Map<string, BackPointer>())
+  );
+
+  for (let i = 0; i < n; i++) {
+    for (const p of cfg.productions) {
+      if (p.body.length === 1 && p.body[0] === input[i]) {
+        table[i][i].add(p.head);
+        if (!back[i][i].has(p.head)) back[i][i].set(p.head, { terminal: input[i] });
+      }
+    }
+  }
+
+  for (let len = 2; len <= n; len++) {
+    for (let i = 0; i <= n - len; i++) {
+      const j = i + len - 1;
+      for (let k = i; k < j; k++) {
+        for (const p of cfg.productions) {
+          if (p.body.length !== 2) continue;
+          if (table[i][k].has(p.body[0]) && table[k + 1][j].has(p.body[1])) {
+            table[i][j].add(p.head);
+            if (!back[i][j].has(p.head)) {
+              back[i][j].set(p.head, {
+                left: { nt: p.body[0], row: i, col: k },
+                right: { nt: p.body[1], row: k + 1, col: j },
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const accepted = table[0][n - 1].has(cfg.startSymbol);
+
+  const build = (nt: string, row: number, col: number): ParseTreeNode => {
+    const span = input.slice(row, col + 1);
+    const bp = back[row][col].get(nt);
+    if (!bp) return { symbol: nt, span, children: [] };
+    if (bp.terminal !== undefined) {
+      return { symbol: nt, span, children: [{ symbol: bp.terminal, span: bp.terminal, children: [] }] };
+    }
+    return {
+      symbol: nt,
+      span,
+      children: [
+        build(bp.left!.nt, bp.left!.row, bp.left!.col),
+        build(bp.right!.nt, bp.right!.row, bp.right!.col),
+      ],
+    };
+  };
+
+  return {
+    table,
+    accepted,
+    tree: accepted ? build(cfg.startSymbol, 0, n - 1) : null,
+  };
+}
+
+/** Breadth-first search for a leftmost derivation of `input` (works on any CFG). */
+export function leftmostDerivation(
+  cfg: CFG,
+  input: string,
+  maxSteps = 20000
+): string[] | null {
+  const isNonTerminal = (s: string) => cfg.nonTerminals.includes(s);
+  const start: string[] = [cfg.startSymbol];
+  const queue: { form: string[]; path: string[] }[] = [
+    { form: start, path: [cfg.startSymbol] },
+  ];
+  const seen = new Set<string>([cfg.startSymbol]);
+  let steps = 0;
+
+  while (queue.length && steps < maxSteps) {
+    const { form, path } = queue.shift()!;
+    steps++;
+
+    const text = form.join("");
+    if (!form.some(isNonTerminal)) {
+      if (text === input) return path;
+      continue;
+    }
+    // prune: terminal prefix must match, form cannot exceed input length
+    const idx = form.findIndex(isNonTerminal);
+    const prefix = form.slice(0, idx).join("");
+    if (!input.startsWith(prefix)) continue;
+    if (form.filter(s => !isNonTerminal(s)).length > input.length) continue;
+    if (form.length > input.length + cfg.nonTerminals.length + 4) continue;
+
+    for (const p of cfg.productions) {
+      if (p.head !== form[idx]) continue;
+      const next = [...form.slice(0, idx), ...p.body, ...form.slice(idx + 1)];
+      const key = next.join("\u0001");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push({ form: next, path: [...path, next.length ? next.join("") : "ε"] });
+    }
+  }
+  return null;
+}
+
+/** Generate the shortest strings in L(G). */
+export function generateStrings(cfg: CFG, limit = 12, maxLength = 8): string[] {
+  const isNonTerminal = (s: string) => cfg.nonTerminals.includes(s);
+  const results: string[] = [];
+  const seenResults = new Set<string>();
+  const queue: string[][] = [[cfg.startSymbol]];
+  const seen = new Set<string>([cfg.startSymbol]);
+  let iterations = 0;
+
+  while (queue.length && results.length < limit && iterations < 30000) {
+    const form = queue.shift()!;
+    iterations++;
+
+    if (!form.some(isNonTerminal)) {
+      const s = form.join("") || "ε";
+      if (!seenResults.has(s)) { seenResults.add(s); results.push(s); }
+      continue;
+    }
+    if (form.filter(s => !isNonTerminal(s)).length > maxLength) continue;
+    if (form.length > maxLength + 4) continue;
+
+    const idx = form.findIndex(isNonTerminal);
+    for (const p of cfg.productions) {
+      if (p.head !== form[idx]) continue;
+      const next = [...form.slice(0, idx), ...p.body, ...form.slice(idx + 1)];
+      const key = next.join("\u0001");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push(next);
+    }
+  }
+  return results.sort((a, b) => (a === "ε" ? -1 : b === "ε" ? 1 : a.length - b.length || a.localeCompare(b)));
+}
+
+/** Standard one-state PDA accepting L(G) by empty stack. */
+export function cfgToPDARules(cfg: CFG): string[] {
+  const rules: string[] = [`δ(q, ε, Z₀) = { (q, ${cfg.startSymbol}) }   // push start symbol`];
+  for (const p of cfg.productions) {
+    const body = p.body.length === 0 ? "ε" : p.body.join("");
+    rules.push(`δ(q, ε, ${p.head}) ∋ (q, ${body})`);
+  }
+  for (const t of cfg.terminals) {
+    rules.push(`δ(q, ${t}, ${t}) = { (q, ε) }   // match terminal`);
+  }
+  return rules;
+}
+
+export function sampleCFG3(): string {
+  return `S → 0S1 | ε`;
+}
+
+export function sampleCFG4(): string {
+  return `S → aB | bA
+A → a | aS | bAA
+B → b | bS | aBB`;
+}
