@@ -22,7 +22,7 @@ export function parseCFG(text: string): CFG {
   const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
   for (const line of lines) {
-    const match = line.match(/^([A-Z][A-Z0-9']*)\s*(?:->|→)\s*(.+)$/);
+    const match = line.match(/^([A-Z](?:_[A-Za-z0-9])?['’₀-₉]*)\s*(?:->|→)\s*(.+)$/);
     if (!match) continue;
 
     const head = match[1];

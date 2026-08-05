@@ -48,6 +48,17 @@ export const BOTTOM = "Z₀";
 
 const isEps = (s: string) => s === "" || s === EPSILON || s === "e" || s === "epsilon";
 
+/** Split a push string into stack symbols; subscripts/primes attach to the previous symbol. */
+export function tokenizeStack(push: string): string[] {
+  const out: string[] = [];
+  for (const ch of push) {
+    if (ch === " ") continue;
+    if (out.length && /['’₀-₉]/.test(ch)) out[out.length - 1] += ch;
+    else out.push(ch);
+  }
+  return out;
+}
+
 function keyOf(c: PDAConfig) {
   return `${c.state}|${c.position}|${c.stack.join(",")}`;
 }
@@ -89,7 +100,7 @@ export function nextConfigs(
       rest = config.stack.slice(1);
     }
 
-    const pushed = isEps(t.push) ? [] : t.push.split("").filter(ch => ch !== " ");
+    const pushed = isEps(t.push) ? [] : tokenizeStack(t.push);
     const newStack = [...pushed, ...rest];
 
     out.push({
