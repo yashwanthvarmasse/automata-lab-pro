@@ -144,15 +144,80 @@ export function sampleTM(): { states: TMState[]; transitions: TMTransition[] } {
   return { states, transitions };
 }
 
-// Sample: Palindrome checker
+// Sample: Palindrome checker over {a, b}
 export function samplePalindromeTM(): { states: TMState[]; transitions: TMTransition[] } {
   const states: TMState[] = [
-    { id: "q0", label: "q₀ (start)", x: 100, y: 200, isStart: true, isAccept: false, isReject: false },
-    { id: "q1", label: "q₁ (match-a)", x: 250, y: 100, isStart: false, isAccept: false, isReject: false },
-    { id: "q2", label: "q₂ (match-b)", x: 250, y: 300, isStart: false, isAccept: false, isReject: false },
-    { id: "q3", label: "q₃ (return)", x: 400, y: 200, isStart: false, isAccept: false, isReject: false },
-    { id: "qa", label: "Accept", x: 550, y: 100, isStart: false, isAccept: true, isReject: false },
-    { id: "qr", label: "Reject", x: 550, y: 300, isStart: false, isAccept: false, isReject: true },
+    { id: "q0", label: "q₀ (read left)", x: 100, y: 200, isStart: true, isAccept: false, isReject: false },
+    { id: "q1", label: "q₁ (scan→ a)", x: 250, y: 100, isStart: false, isAccept: false, isReject: false },
+    { id: "q2", label: "q₂ (scan→ b)", x: 250, y: 300, isStart: false, isAccept: false, isReject: false },
+    { id: "q3", label: "q₃ (match a)", x: 400, y: 100, isStart: false, isAccept: false, isReject: false },
+    { id: "q4", label: "q₄ (match b)", x: 400, y: 300, isStart: false, isAccept: false, isReject: false },
+    { id: "q5", label: "q₅ (return)", x: 550, y: 200, isStart: false, isAccept: false, isReject: false },
+    { id: "qa", label: "Accept", x: 700, y: 100, isStart: false, isAccept: true, isReject: false },
+    { id: "qr", label: "Reject", x: 700, y: 300, isStart: false, isAccept: false, isReject: true },
   ];
-  return { states, transitions: [] };
+  const transitions: TMTransition[] = [
+    { id: "pa1", from: "q0", to: "qa", read: "_", write: "_", direction: "S" },
+    { id: "pa2", from: "q0", to: "q1", read: "a", write: "_", direction: "R" },
+    { id: "pa3", from: "q0", to: "q2", read: "b", write: "_", direction: "R" },
+    { id: "pa4", from: "q1", to: "q1", read: "a", write: "a", direction: "R" },
+    { id: "pa5", from: "q1", to: "q1", read: "b", write: "b", direction: "R" },
+    { id: "pa6", from: "q1", to: "q3", read: "_", write: "_", direction: "L" },
+    { id: "pa7", from: "q2", to: "q2", read: "a", write: "a", direction: "R" },
+    { id: "pa8", from: "q2", to: "q2", read: "b", write: "b", direction: "R" },
+    { id: "pa9", from: "q2", to: "q4", read: "_", write: "_", direction: "L" },
+    { id: "pa10", from: "q3", to: "q5", read: "a", write: "_", direction: "L" },
+    { id: "pa11", from: "q3", to: "qr", read: "b", write: "b", direction: "S" },
+    { id: "pa12", from: "q3", to: "qa", read: "_", write: "_", direction: "S" },
+    { id: "pa13", from: "q4", to: "q5", read: "b", write: "_", direction: "L" },
+    { id: "pa14", from: "q4", to: "qr", read: "a", write: "a", direction: "S" },
+    { id: "pa15", from: "q4", to: "qa", read: "_", write: "_", direction: "S" },
+    { id: "pa16", from: "q5", to: "q5", read: "a", write: "a", direction: "L" },
+    { id: "pa17", from: "q5", to: "q5", read: "b", write: "b", direction: "L" },
+    { id: "pa18", from: "q5", to: "q0", read: "_", write: "_", direction: "R" },
+  ];
+  return { states, transitions };
 }
+
+// Sample: accepts { 0ⁿ1ⁿ | n ≥ 0 } by crossing off matching pairs
+export function sampleAnBnTM(): { states: TMState[]; transitions: TMTransition[] } {
+  const states: TMState[] = [
+    { id: "q0", label: "q₀ (mark 0)", x: 100, y: 200, isStart: true, isAccept: false, isReject: false },
+    { id: "q1", label: "q₁ (find 1)", x: 260, y: 200, isStart: false, isAccept: false, isReject: false },
+    { id: "q2", label: "q₂ (return)", x: 420, y: 200, isStart: false, isAccept: false, isReject: false },
+    { id: "q3", label: "q₃ (verify)", x: 580, y: 200, isStart: false, isAccept: false, isReject: false },
+    { id: "qa", label: "Accept", x: 740, y: 120, isStart: false, isAccept: true, isReject: false },
+    { id: "qr", label: "Reject", x: 740, y: 280, isStart: false, isAccept: false, isReject: true },
+  ];
+  const transitions: TMTransition[] = [
+    { id: "n1", from: "q0", to: "q1", read: "0", write: "X", direction: "R" },
+    { id: "n2", from: "q0", to: "q3", read: "Y", write: "Y", direction: "R" },
+    { id: "n3", from: "q0", to: "qa", read: "_", write: "_", direction: "S" },
+    { id: "n4", from: "q0", to: "qr", read: "1", write: "1", direction: "S" },
+    { id: "n5", from: "q1", to: "q1", read: "0", write: "0", direction: "R" },
+    { id: "n6", from: "q1", to: "q1", read: "Y", write: "Y", direction: "R" },
+    { id: "n7", from: "q1", to: "q2", read: "1", write: "Y", direction: "L" },
+    { id: "n8", from: "q1", to: "qr", read: "_", write: "_", direction: "S" },
+    { id: "n9", from: "q2", to: "q2", read: "0", write: "0", direction: "L" },
+    { id: "n10", from: "q2", to: "q2", read: "Y", write: "Y", direction: "L" },
+    { id: "n11", from: "q2", to: "q0", read: "X", write: "X", direction: "R" },
+    { id: "n12", from: "q3", to: "q3", read: "Y", write: "Y", direction: "R" },
+    { id: "n13", from: "q3", to: "qa", read: "_", write: "_", direction: "S" },
+    { id: "n14", from: "q3", to: "qr", read: "0", write: "0", direction: "S" },
+    { id: "n15", from: "q3", to: "qr", read: "1", write: "1", direction: "S" },
+  ];
+  return { states, transitions };
+}
+
+export interface TMSample {
+  name: string;
+  input: string;
+  build: () => { states: TMState[]; transitions: TMTransition[] };
+}
+
+export const TM_SAMPLES: TMSample[] = [
+  { name: "Binary increment", input: "1011", build: sampleTM },
+  { name: "Palindrome (a/b)", input: "abba", build: samplePalindromeTM },
+  { name: "0ⁿ1ⁿ recogniser", input: "000111", build: sampleAnBnTM },
+];
+
