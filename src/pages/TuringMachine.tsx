@@ -8,12 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import {
   initTM,
   stepTM,
-  sampleTM,
+  TM_SAMPLES,
   type TMState,
   type TMTransition,
   type TMConfig,
   type TMStep,
 } from "@/lib/turing-engine";
+
 
 const TuringMachine = () => {
   const [states, setStates] = useState<TMState[]>([]);
