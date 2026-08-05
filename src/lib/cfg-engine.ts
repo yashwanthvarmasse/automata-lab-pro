@@ -34,25 +34,25 @@ export function parseCFG(text: string): CFG {
       if (alt === "ε" || alt === "epsilon" || alt === "e") {
         productions.push({ head, body: [] });
       } else {
-        // Parse symbols: uppercase = nonterminal, lowercase/digits = terminal
+        // Non-terminal = uppercase letter, optional _x suffix, optional primes/subscripts.
+        // Everything else (lowercase letters, digits, punctuation) is a terminal.
         const body: string[] = [];
         let i = 0;
         while (i < alt.length) {
           if (alt[i] === " ") { i++; continue; }
-          if (alt[i] >= "A" && alt[i] <= "Z") {
-            let sym = alt[i]; i++;
-            while (i < alt.length && (alt[i] === "'" || (alt[i] >= "0" && alt[i] <= "9") || (alt[i] >= "A" && alt[i] <= "Z" && sym.length < 3))) {
-              if (alt[i] >= "A" && alt[i] <= "Z" && sym.length >= 1) break;
-              sym += alt[i]; i++;
-            }
-            body.push(sym);
-            allSymbols.add(sym);
+          const rest = alt.slice(i);
+          const m = rest.match(/^[A-Z](?:_[A-Za-z0-9])?['’₀-₉]*/);
+          if (m) {
+            body.push(m[0]);
+            allSymbols.add(m[0]);
+            i += m[0].length;
           } else {
             body.push(alt[i]);
             allSymbols.add(alt[i]);
             i++;
           }
         }
+
         productions.push({ head, body });
       }
     }
