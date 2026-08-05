@@ -34,11 +34,14 @@ const TuringMachine = () => {
   const [newWrite, setNewWrite] = useState("");
   const [newDir, setNewDir] = useState<"L" | "R" | "S">("R");
 
+  const [sampleIdx, setSampleIdx] = useState(0);
+
   useEffect(() => {
-    const sample = sampleTM();
+    const sample = TM_SAMPLES[0].build();
     setStates(sample.states);
     setTransitions(sample.transitions);
   }, []);
+
 
   // Auto-run
   useEffect(() => {
