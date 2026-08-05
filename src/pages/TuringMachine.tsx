@@ -104,13 +104,16 @@ const TuringMachine = () => {
     setIsRunning(false);
   }, []);
 
-  const handleLoadSample = useCallback(() => {
-    const sample = sampleTM();
+  const handleLoadSample = useCallback((idx: number) => {
+    const def = TM_SAMPLES[idx];
+    const sample = def.build();
+    setSampleIdx(idx);
     setStates(sample.states);
     setTransitions(sample.transitions);
-    setTapeInput("1011");
+    setTapeInput(def.input);
     handleReset();
   }, [handleReset]);
+
 
   const addState = useCallback(() => {
     const idx = states.length;
