@@ -181,11 +181,18 @@ const TuringMachine = () => {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleLoadSample}>
-            <Upload className="w-3 h-3 mr-2" /> Sample (Binary Increment)
-          </Button>
+        <div className="flex items-center gap-2">
+          <Upload className="w-3 h-3 text-muted-foreground" />
+          <Select value={String(sampleIdx)} onValueChange={v => handleLoadSample(Number(v))}>
+            <SelectTrigger className="h-8 w-52 text-xs"><SelectValue placeholder="Load sample" /></SelectTrigger>
+            <SelectContent>
+              {TM_SAMPLES.map((s, i) => (
+                <SelectItem key={s.name} value={String(i)} className="text-xs">{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+
       </div>
 
       <div className="flex flex-1 overflow-hidden">
