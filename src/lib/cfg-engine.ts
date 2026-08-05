@@ -169,95 +169,219 @@ export function findUselessSymbols(cfg: CFG): string[] {
   return cfg.nonTerminals.filter(nt => !productive.has(nt) || !reachable.has(nt));
 }
 
+// ---------------------------------------------------------------------------
+// Grammar simplification pipeline
+// ---------------------------------------------------------------------------
+
+const isNT = (cfg: CFG, s: string) => cfg.nonTerminals.includes(s);
+
+function rebuild(cfg: CFG, productions: Production[], nonTerminals: string[], startSymbol?: string): CFG {
+  const uniq = new Map<string, Production>();
+  for (const p of productions) uniq.set(`${p.head}->${p.body.join("\u0001")}`, p);
+  const prods = Array.from(uniq.values());
+  const nts = Array.from(new Set(nonTerminals));
+  const terminals = Array.from(new Set(prods.flatMap(p => p.body).filter(s => !nts.includes(s))));
+  return { nonTerminals: nts, terminals, productions: prods, startSymbol: startSymbol ?? cfg.startSymbol };
+}
+
+export function nullableSymbols(cfg: CFG): Set<string> {
+  const nullable = new Set<string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of cfg.productions) {
+      if (nullable.has(p.head)) continue;
+      if (p.body.length === 0 || p.body.every(s => nullable.has(s))) {
+        nullable.add(p.head);
+        changed = true;
+      }
+    }
+  }
+  return nullable;
+}
+
+/** Remove ε-productions (a fresh start symbol is added if the start is nullable). */
+export function removeEpsilonProductions(cfg: CFG): CFG {
+  const nullable = nullableSymbols(cfg);
+  const out: Production[] = [];
+
+  for (const p of cfg.productions) {
+    if (p.body.length === 0) continue;
+    // all subsets of nullable occurrences
+    const positions = p.body.map((s, i) => (nullable.has(s) ? i : -1)).filter(i => i >= 0);
+    const combos = 1 << positions.length;
+    for (let mask = 0; mask < combos; mask++) {
+      const omit = new Set<number>();
+      positions.forEach((pos, bit) => { if (mask & (1 << bit)) omit.add(pos); });
+      const body = p.body.filter((_, i) => !omit.has(i));
+      if (body.length === 0) continue;
+      out.push({ head: p.head, body });
+    }
+  }
+
+  let start = cfg.startSymbol;
+  const nts = [...cfg.nonTerminals];
+  if (nullable.has(cfg.startSymbol)) {
+    start = cfg.startSymbol + "₀";
+    nts.push(start);
+    out.push({ head: start, body: [cfg.startSymbol] });
+    out.push({ head: start, body: [] });
+  }
+  return rebuild(cfg, out, nts, start);
+}
+
+/** Remove unit productions A → B by inlining reachable non-unit bodies. */
+export function removeUnitProductions(cfg: CFG): CFG {
+  const out: Production[] = [];
+  for (const nt of cfg.nonTerminals) {
+    // unit closure of nt
+    const closure = new Set<string>([nt]);
+    const stack = [nt];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      for (const p of cfg.productions) {
+        if (p.head !== cur) continue;
+        if (p.body.length === 1 && isNT(cfg, p.body[0]) && !closure.has(p.body[0])) {
+          closure.add(p.body[0]);
+          stack.push(p.body[0]);
+        }
+      }
+    }
+    for (const member of closure) {
+      for (const p of cfg.productions) {
+        if (p.head !== member) continue;
+        const isUnit = p.body.length === 1 && isNT(cfg, p.body[0]);
+        if (isUnit) continue;
+        out.push({ head: nt, body: [...p.body] });
+      }
+    }
+  }
+  return rebuild(cfg, out, cfg.nonTerminals);
+}
+
+/** Drop non-productive and unreachable symbols along with their productions. */
+export function removeUselessSymbols(cfg: CFG): CFG {
+  const productive = new Set<string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of cfg.productions) {
+      if (productive.has(p.head)) continue;
+      if (p.body.every(s => !isNT(cfg, s) || productive.has(s))) {
+        productive.add(p.head);
+        changed = true;
+      }
+    }
+  }
+  let prods = cfg.productions.filter(
+    p => productive.has(p.head) && p.body.every(s => !isNT(cfg, s) || productive.has(s))
+  );
+
+  const reachable = new Set<string>([cfg.startSymbol]);
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of prods) {
+      if (!reachable.has(p.head)) continue;
+      for (const s of p.body) {
+        if (!reachable.has(s)) { reachable.add(s); changed = true; }
+      }
+    }
+  }
+  prods = prods.filter(p => reachable.has(p.head));
+  const nts = cfg.nonTerminals.filter(nt => productive.has(nt) && reachable.has(nt));
+  return rebuild(cfg, prods, nts.length ? nts : [cfg.startSymbol]);
+}
+
+export interface ConversionStep {
+  title: string;
+  description: string;
+  grammar: CFG;
+}
+
+/** Full CNF pipeline with an inspectable step log. */
+export function convertToCNFDetailed(cfg: CFG): { cnf: CFG; steps: ConversionStep[] } {
+  const steps: ConversionStep[] = [];
+
+  const noEps = removeEpsilonProductions(cfg);
+  steps.push({
+    title: "1. Remove ε-productions",
+    description: "Every nullable non-terminal is expanded away; a new start symbol is introduced if the language contains ε.",
+    grammar: noEps,
+  });
+
+  const noUnit = removeUnitProductions(noEps);
+  steps.push({
+    title: "2. Remove unit productions",
+    description: "Chains A → B are replaced by the non-unit bodies reachable from B.",
+    grammar: noUnit,
+  });
+
+  const clean = removeUselessSymbols(noUnit);
+  steps.push({
+    title: "3. Remove useless symbols",
+    description: "Non-productive and unreachable non-terminals are deleted.",
+    grammar: clean,
+  });
+
+  // TERM: isolate terminals occurring in bodies of length ≥ 2
+  const prods: Production[] = [];
+  const nts = new Set(clean.nonTerminals);
+  const termMap = new Map<string, string>();
+  for (const p of clean.productions) {
+    if (p.body.length < 2) { prods.push(p); continue; }
+    const body = p.body.map(sym => {
+      if (nts.has(sym)) return sym;
+      let nt = termMap.get(sym);
+      if (!nt) {
+        nt = `T_${sym}`;
+        termMap.set(sym, nt);
+        nts.add(nt);
+        prods.push({ head: nt, body: [sym] });
+      }
+      return nt;
+    });
+    prods.push({ head: p.head, body });
+  }
+  const termed = rebuild(clean, prods, Array.from(nts));
+  steps.push({
+    title: "4. TERM — isolate terminals",
+    description: "Terminals inside long bodies are replaced by dedicated non-terminals such as T_a → a.",
+    grammar: termed,
+  });
+
+  // BIN: break bodies longer than 2
+  const finalProds: Production[] = [];
+  const finalNts = new Set(termed.nonTerminals);
+  let counter = 1;
+  for (const p of termed.productions) {
+    if (p.body.length <= 2) { finalProds.push(p); continue; }
+    let head = p.head;
+    let rest = [...p.body];
+    while (rest.length > 2) {
+      const nt = `X${counter++}`;
+      finalNts.add(nt);
+      finalProds.push({ head, body: [rest[0], nt] });
+      head = nt;
+      rest = rest.slice(1);
+    }
+    finalProds.push({ head, body: rest });
+  }
+  const cnf = rebuild(termed, finalProds, Array.from(finalNts));
+  steps.push({
+    title: "5. BIN — binarise long bodies",
+    description: "Bodies with more than two symbols are chained through fresh non-terminals X₁, X₂, …",
+    grammar: cnf,
+  });
+
+  return { cnf, steps };
+}
+
 // Convert to Chomsky Normal Form
 export function convertToCNF(cfg: CFG): CFG {
-  const prods: Production[] = [...cfg.productions];
-  const nts = new Set(cfg.nonTerminals);
-  let counter = 0;
-
-  // Step 1: Remove ε-productions (simplified)
-  const nullable = new Set<string>();
-  let ch = true;
-  while (ch) {
-    ch = false;
-    for (const p of prods) {
-      if (!nullable.has(p.head) && (p.body.length === 0 || p.body.every(s => nullable.has(s)))) {
-        nullable.add(p.head);
-        ch = true;
-      }
-    }
-  }
-
-  // Step 2: For each production with body > 2, break down
-  const cnfProds: Production[] = [];
-
-  for (const p of prods) {
-    if (p.body.length === 0) {
-      if (p.head === cfg.startSymbol) cnfProds.push(p);
-      continue;
-    }
-    if (p.body.length === 1) {
-      if (cfg.terminals.includes(p.body[0])) {
-        cnfProds.push(p);
-      } else {
-        // Unit production - inline
-        const targetProds = prods.filter(pp => pp.head === p.body[0]);
-        for (const tp of targetProds) {
-          cnfProds.push({ head: p.head, body: [...tp.body] });
-        }
-      }
-      continue;
-    }
-    if (p.body.length === 2) {
-      // Replace terminals with nonterminals
-      const newBody = p.body.map(s => {
-        if (cfg.terminals.includes(s)) {
-          const newNT = `T${s.toUpperCase()}`;
-          if (!nts.has(newNT)) {
-            nts.add(newNT);
-            cnfProds.push({ head: newNT, body: [s] });
-          }
-          return newNT;
-        }
-        return s;
-      });
-      cnfProds.push({ head: p.head, body: newBody });
-      continue;
-    }
-
-    // body > 2: chain
-    let current = p.body.map(s => {
-      if (cfg.terminals.includes(s)) {
-        const newNT = `T${s.toUpperCase()}`;
-        if (!nts.has(newNT)) {
-          nts.add(newNT);
-          cnfProds.push({ head: newNT, body: [s] });
-        }
-        return newNT;
-      }
-      return s;
-    });
-
-    let head = p.head;
-    while (current.length > 2) {
-      const newNT = `X${counter++}`;
-      nts.add(newNT);
-      cnfProds.push({ head, body: [current[0], newNT] });
-      head = newNT;
-      current = current.slice(1);
-    }
-    cnfProds.push({ head, body: current });
-  }
-
-  const terminals = Array.from(new Set(cnfProds.flatMap(p => p.body).filter(s => !nts.has(s))));
-
-  return {
-    nonTerminals: Array.from(nts),
-    terminals,
-    productions: cnfProds,
-    startSymbol: cfg.startSymbol,
-  };
+  return convertToCNFDetailed(cfg).cnf;
 }
+
 
 // CYK Algorithm
 export interface CYKResult {
