@@ -181,20 +181,84 @@ export function regexToNFA(regex: string): Automaton {
   const ast = parseRegex(regex);
   const frag = buildNFA(ast);
 
-  const angleStep = (2 * Math.PI) / Math.max(frag.states.length, 1);
-  const radius = Math.min(200, frag.states.length * 25);
-
-  const states: FAState[] = frag.states.map((id, i) => ({
-    id,
-    label: id,
-    x: 350 + radius * Math.cos(angleStep * i - Math.PI / 2),
-    y: 280 + radius * Math.sin(angleStep * i - Math.PI / 2),
-    isStart: id === frag.start,
-    isAccept: id === frag.accept,
-  }));
+  const states: FAState[] = layoutStates(frag.states, frag.transitions, frag.start, frag.accept);
 
   return { states, transitions: frag.transitions, alphabet: getAlphabet(frag.transitions) };
 }
+
+// ── Layered (left-to-right) layout so Thompson NFAs read cleanly ──
+function layoutStates(
+  ids: string[],
+  transitions: FATransition[],
+  startId: string,
+  acceptId: string
+): FAState[] {
+  const outgoing = new Map<string, string[]>();
+  ids.forEach((id) => outgoing.set(id, []));
+  transitions.forEach((t) => {
+    if (!outgoing.has(t.from)) outgoing.set(t.from, []);
+    outgoing.get(t.from)!.push(t.to);
+  });
+
+  // BFS from start → depth (longest-path-ish via level assignment)
+  const depth = new Map<string, number>();
+  depth.set(startId, 0);
+  const queue = [startId];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const d = depth.get(cur)!;
+    for (const next of outgoing.get(cur) ?? []) {
+      if (!depth.has(next) || depth.get(next)! < d + 1) {
+        // avoid infinite growth on cycles (star loops)
+        if (depth.has(next) && depth.get(next)! >= d + 1) continue;
+        if (!depth.has(next)) {
+          depth.set(next, d + 1);
+          queue.push(next);
+        }
+      }
+    }
+  }
+  // unreachable / disconnected states get placed after the deepest layer
+  let maxDepth = 0;
+  depth.forEach((d) => (maxDepth = Math.max(maxDepth, d)));
+  ids.forEach((id) => {
+    if (!depth.has(id)) depth.set(id, maxDepth + 1);
+  });
+  // accept state always sits at the far right
+  const finalDepth = Math.max(...ids.map((id) => depth.get(id)!));
+  depth.set(acceptId, finalDepth);
+
+  const layers = new Map<number, string[]>();
+  ids.forEach((id) => {
+    const d = depth.get(id)!;
+    if (!layers.has(d)) layers.set(d, []);
+    layers.get(d)!.push(id);
+  });
+
+  const X_GAP = 120;
+  const Y_GAP = 100;
+  const X0 = 90;
+  const Y0 = 260;
+
+  const result: FAState[] = [];
+  layers.forEach((layerIds, d) => {
+    const n = layerIds.length;
+    layerIds.forEach((id, i) => {
+      result.push({
+        id,
+        label: id,
+        x: X0 + d * X_GAP,
+        y: Y0 + (i - (n - 1) / 2) * Y_GAP,
+        isStart: id === startId,
+        isAccept: id === acceptId,
+      });
+    });
+  });
+
+  // keep original ordering stable
+  return ids.map((id) => result.find((s) => s.id === id)!);
+}
+
 
 // ── Test string against regex NFA ──
 export function testRegexString(regex: string, input: string): boolean {
