@@ -162,15 +162,28 @@ const AutomataGraph = ({
     });
   });
 
+  // Auto-fit: compute a viewBox that contains every state (plus label padding)
+  const PAD = 70;
+  const xs = states.map((s) => s.x);
+  const ys = states.map((s) => s.y);
+  const minX = xs.length ? Math.min(...xs) - PAD : 0;
+  const minY = ys.length ? Math.min(...ys) - PAD : 0;
+  const maxX = xs.length ? Math.max(...xs) + PAD : 800;
+  const maxY = ys.length ? Math.max(...ys) + PAD : 600;
+  const viewBox = `${minX} ${minY} ${Math.max(maxX - minX, 200)} ${Math.max(maxY - minY, 200)}`;
+
   return (
     <svg
       ref={svgRef}
       className="w-full h-full bg-background rounded-xl"
+      viewBox={viewBox}
+      preserveAspectRatio="xMidYMid meet"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onClick={() => onSelectState?.(null)}
     >
+
       <defs>
         <marker
           id="arrowhead"
