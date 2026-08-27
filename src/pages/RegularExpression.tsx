@@ -44,6 +44,25 @@ const RegularExpression = () => {
   const [error, setError] = useState<string | null>(null);
   const [steps, setSteps] = useState<ConversionStep[]>([]);
 
+  useModuleDetails(
+    [
+      `Regular expression entered: "${regex}"`,
+      ast ? `Parsed AST: ${astToString(ast)}` : "Not converted yet",
+      `Currently viewing: ${viewMode.toUpperCase()} diagram`,
+      `Thompson NFA: ${nfaStates.length} states, ${nfaTransitions.length} transitions`,
+      `Subset-construction DFA: ${dfaStates.length} states; minimized DFA: ${minDfaStates.length} states`,
+      steps.length ? `Pipeline steps shown: ${steps.map(s => s.title).join(" | ")}` : "",
+      testResults.length
+        ? `Recent string tests: ${testResults.map(r => `"${r.input}" → ${r.accepted ? "accepted" : "rejected"}`).join(", ")}`
+        : "",
+      error ? `Error shown: ${error}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+
+
+
   const handleConvert = useCallback(() => {
     try {
       setError(null);
