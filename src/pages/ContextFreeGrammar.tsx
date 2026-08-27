@@ -29,6 +29,7 @@ import {
   type ConversionStep,
   type ParseTreeNode,
 } from "@/lib/cfg-engine";
+import { useModuleDetails } from "@/lib/page-context";
 
 const SAMPLES = [
   { label: "aⁿbⁿ style", value: sampleCFG },
