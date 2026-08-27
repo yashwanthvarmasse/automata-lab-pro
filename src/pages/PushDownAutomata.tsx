@@ -71,6 +71,29 @@ const PushDownAutomata = () => {
   const current = sim?.steps[step] ?? null;
   const deterministic = useMemo(() => isDeterministic(transitions), [transitions]);
 
+  const graphStates = useMemo(
+    () => states.map(s => ({ id: s.id, label: s.label, x: s.x, y: s.y, isStart: s.isStart, isAccept: s.isAccept })),
+    [states]
+  );
+  const graphTransitions = useMemo(
+    () => transitions.map(t => ({ id: t.id, from: t.from, to: t.to, symbol: transitionLabel(t) })),
+    [transitions]
+  );
+
+  useModuleDetails(
+    [
+      `PDA: ${SAMPLE_PDAS[sampleIdx].name} (${deterministic ? "deterministic" : "nondeterministic"})`,
+      `Acceptance mode: ${mode}`,
+      `Input: "${input}"`,
+      `States: ${states.map(s => `${s.label}${s.isStart ? " (start)" : ""}${s.isAccept ? " (accept)" : ""}`).join(", ")}`,
+      `Transitions: ${transitions.map(t => `δ(${t.from}, ${transitionLabel(t)}) → ${t.to}`).join("; ")}`,
+      sim && current
+        ? `Simulation: step ${step}/${sim.steps.length - 1}, ID = (${current.config.state}, ${input.slice(current.config.position) || "ε"}, ${current.config.stack.join("") || "ε"}), result so far: ${sim.accepted ? "ACCEPTED" : "REJECTED"}`
+        : "Simulation: not run yet",
+    ].join("\n")
+  );
+
+
   const addTransition = () => {
     if (!tFrom || !tTo) return;
     setTransitions(prev => [...prev, {
