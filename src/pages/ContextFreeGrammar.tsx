@@ -69,6 +69,30 @@ const ContextFreeGrammar = () => {
   const [testHistory, setTestHistory] = useState<{ input: string; accepted: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  useModuleDetails(
+    [
+      `Grammar in the editor:\n${grammarText}`,
+      cfg ? `Parsed grammar start symbol: ${cfg.startSymbol}` : "Grammar not analyzed yet",
+      leftRecursive.length ? `Left-recursive non-terminals: ${leftRecursive.join(", ")}` : "",
+      useless.length ? `Useless symbols: ${useless.join(", ")}` : "",
+      nullable.length ? `Nullable symbols: ${nullable.join(", ")}` : "",
+      cnf ? `CNF grammar:\n${cfgToString(cnf)}` : "",
+      cnfSteps.length ? `CNF steps shown: ${cnfSteps.map(s => s.title).join(" | ")}` : "",
+      cykResult ? `CYK on "${testInput}": ${cykResult.accepted ? "accepted" : "rejected"}` : "",
+      derivation ? `Leftmost derivation: ${derivation.join(" ⇒ ")}` : "",
+      generated.length ? `Generated strings: ${generated.join(", ")}` : "",
+      pdaRules.length ? `CFG→PDA rules: ${pdaRules.join("; ")}` : "",
+      testHistory.length
+        ? `Test history: ${testHistory.map(t => `"${t.input}" → ${t.accepted ? "accepted" : "rejected"}`).join(", ")}`
+        : "",
+      error ? `Error shown: ${error}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+
+
+
   const resetDerived = () => {
     setCnf(null); setCnfSteps([]); setCykResult(null);
     setDerivation(null); setGenerated([]); setPdaRules([]);
