@@ -14,6 +14,7 @@ import {
   type RegexNode,
 } from "@/lib/regex-engine";
 import { nfaToDfa, minimizeDFA, type FAState, type FATransition } from "@/lib/automata-engine";
+import { useModuleDetails } from "@/lib/page-context";
 
 interface ConversionStep {
   title: string;
