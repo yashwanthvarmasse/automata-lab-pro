@@ -38,6 +38,23 @@ const TuringMachine = () => {
 
   const [sampleIdx, setSampleIdx] = useState(0);
 
+  useModuleDetails(
+    [
+      `Turing machine sample: ${TM_SAMPLES[sampleIdx]?.name ?? "custom"}`,
+      `Tape input: "${tapeInput}"`,
+      `States: ${states.map(s => `${s.label ?? s.id}${s.isStart ? " (start)" : ""}${s.isAccept ? " (accept)" : ""}`).join(", ")}`,
+      `Transitions: ${transitions.map(t => `δ(${t.from}, ${t.read}) = (${t.to}, ${t.write}, ${t.direction})`).join("; ")}`,
+      config
+        ? `Current configuration: state ${config.currentState}, head at ${config.headPosition}, tape "${config.tape.join("")}", status ${config.status}, step ${config.stepCount}`
+        : "Machine not started yet",
+      history.length ? `Executed ${history.length} steps so far` : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+
+
+
   useEffect(() => {
     const sample = TM_SAMPLES[0].build();
     setStates(sample.states);
