@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import AutomataGraph from "@/components/automata/AutomataGraph";
+import { useModuleDetails } from "@/lib/page-context";
 import {
   simulatePDA,
   transitionLabel,
@@ -70,6 +72,29 @@ const PushDownAutomata = () => {
 
   const current = sim?.steps[step] ?? null;
   const deterministic = useMemo(() => isDeterministic(transitions), [transitions]);
+
+  const graphStates = useMemo(
+    () => states.map(s => ({ id: s.id, label: s.label, x: s.x, y: s.y, isStart: s.isStart, isAccept: s.isAccept })),
+    [states]
+  );
+  const graphTransitions = useMemo(
+    () => transitions.map(t => ({ id: t.id, from: t.from, to: t.to, symbol: transitionLabel(t) })),
+    [transitions]
+  );
+
+  useModuleDetails(
+    [
+      `PDA: ${SAMPLE_PDAS[sampleIdx].name} (${deterministic ? "deterministic" : "nondeterministic"})`,
+      `Acceptance mode: ${mode}`,
+      `Input: "${input}"`,
+      `States: ${states.map(s => `${s.label}${s.isStart ? " (start)" : ""}${s.isAccept ? " (accept)" : ""}`).join(", ")}`,
+      `Transitions: ${transitions.map(t => `δ(${t.from}, ${transitionLabel(t)}) → ${t.to}`).join("; ")}`,
+      sim && current
+        ? `Simulation: step ${step}/${sim.steps.length - 1}, ID = (${current.config.state}, ${input.slice(current.config.position) || "ε"}, ${current.config.stack.join("") || "ε"}), result so far: ${sim.accepted ? "ACCEPTED" : "REJECTED"}`
+        : "Simulation: not run yet",
+    ].join("\n")
+  );
+
 
   const addTransition = () => {
     if (!tFrom || !tTo) return;
@@ -160,6 +185,26 @@ const PushDownAutomata = () => {
               {SAMPLE_PDAS[sampleIdx].description}. Stack bottom marker is Z₀; leave a field blank for ε.
             </p>
           </div>
+
+          {/* State diagram */}
+          <div className="glass-panel p-2">
+            <div className="px-2 pt-1 pb-2 flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">State diagram</span>
+              <span className="text-[10px] text-muted-foreground font-mono">label: read, pop / push</span>
+            </div>
+            <div className="h-[300px]">
+              <AutomataGraph
+                states={graphStates}
+                transitions={graphTransitions}
+                activeStates={current ? [current.config.state] : []}
+                simulationStatus={sim ? (sim.accepted ? "accepted" : "rejected") : null}
+                onMoveState={(id, x, y) =>
+                  setStates(prev => prev.map(s => (s.id === id ? { ...s, x, y } : s)))
+                }
+              />
+            </div>
+          </div>
+
 
           {/* Simulation view */}
           {sim && current && (

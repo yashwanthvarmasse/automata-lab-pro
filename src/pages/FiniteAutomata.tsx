@@ -16,6 +16,7 @@ import {
   type SimulationStep,
   type Automaton,
 } from "@/lib/automata-engine";
+import { useModuleDetails } from "@/lib/page-context";
 
 const FiniteAutomata = () => {
   const [states, setStates] = useState<FAState[]>([]);
@@ -26,6 +27,21 @@ const FiniteAutomata = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [inputString, setInputString] = useState("");
   const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useModuleDetails(
+    [
+      `States: ${states.map(s => `${s.label}${s.isStart ? " (start)" : ""}${s.isAccept ? " (accept)" : ""}`).join(", ") || "none"}`,
+      `Transitions: ${transitions.map(t => `δ(${t.from}, ${t.symbol}) = ${t.to}`).join("; ") || "none"}`,
+      `Input string: "${inputString}"`,
+      simulationSteps.length
+        ? `Simulation step ${currentStep}/${simulationSteps.length - 1}: active states ${simulationSteps[currentStep]?.currentStates.join(", ")}, status ${simulationSteps[simulationSteps.length - 1]?.status}`
+        : "Simulation not run yet",
+      selectedState ? `Selected state: ${selectedState}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+
 
   // Load sample on mount
   useEffect(() => {

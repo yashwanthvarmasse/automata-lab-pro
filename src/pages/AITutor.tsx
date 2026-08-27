@@ -1,13 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Bot, Send } from "lucide-react";
+import { Bot, Send, Square, Trash2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
+import { streamTutor, type ChatMessage } from "@/lib/ai-service";
+import { usePageContext } from "@/lib/page-context";
 
 const suggestions = [
   "Explain the difference between DFA and NFA",
@@ -17,57 +15,78 @@ const suggestions = [
   "What is the Chomsky Normal Form?",
 ];
 
+const WELCOME =
+  "Welcome to the AI Tutor! Ask me about finite automata, regular expressions, grammars, pushdown automata, Turing machines or the Chomsky hierarchy — I also know which module you are on.";
+
 const AITutor = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "Welcome to the AI Tutor! I can help you understand Theory of Computation concepts. Ask me about automata, grammars, Turing machines, or any TOC topic.\n\n*Note: AI integration requires backend setup. Connect Lovable Cloud to enable live AI responses.*",
-    },
-  ]);
+  const { context } = usePageContext();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-    const userMsg: Message = { role: "user", content: input.trim() };
-    setMessages((prev) => [
-      ...prev,
-      userMsg,
-      {
-        role: "assistant",
-        content:
-          "AI backend not connected yet. Enable Lovable Cloud to get live AI-powered responses for TOC concepts, automata generation, and grammar debugging.",
-      },
-    ]);
-    setInput("");
-  };
+  const handleSend = useCallback(
+    async (text?: string) => {
+      const msg = (text ?? input).trim();
+      if (!msg || isStreaming) return;
+      setInput("");
+
+      const next: ChatMessage[] = [...messages, { role: "user", content: msg }];
+      setMessages([...next, { role: "assistant", content: "" }]);
+      setIsStreaming(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        let acc = "";
+        for await (const token of streamTutor(next, context, controller.signal)) {
+          acc += token;
+          setMessages([...next, { role: "assistant", content: acc }]);
+        }
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
+        setMessages([
+          ...next,
+          { role: "assistant", content: `⚠️ ${err instanceof Error ? err.message : "Something went wrong."}` },
+        ]);
+      } finally {
+        setIsStreaming(false);
+        abortRef.current = null;
+      }
+    },
+    [input, messages, context, isStreaming]
+  );
 
   return (
-    <motion.div
-      className="flex flex-col h-full"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-border">
-        <div className="p-2.5 rounded-lg bg-accent/20 text-accent">
-          <Bot className="w-5 h-5" />
+    <motion.div className="flex flex-col h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-accent/20 text-accent">
+            <Bot className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-heading font-bold text-foreground">AI Tutor</h1>
+            <p className="text-xs text-muted-foreground">Ask questions about Theory of Computation</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-heading font-bold text-foreground">AI Tutor</h1>
-          <p className="text-xs text-muted-foreground">
-            Ask questions about Theory of Computation
-          </p>
-        </div>
+        {messages.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => setMessages([])}>
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        )}
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 && (
+          <div className="glass-panel px-4 py-3 text-sm text-foreground max-w-[75%]">{WELCOME}</div>
+        )}
+
         {messages.map((msg, i) => (
           <motion.div
             key={i}
@@ -76,26 +95,29 @@ const AITutor = () => {
             animate={{ opacity: 1, y: 0 }}
           >
             <div
-              className={`max-w-[75%] rounded-lg px-4 py-3 text-sm whitespace-pre-wrap ${
+              className={`max-w-[75%] rounded-lg px-4 py-3 text-sm ${
                 msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "glass-panel text-foreground"
+                  ? "bg-primary text-primary-foreground whitespace-pre-wrap"
+                  : "glass-panel text-foreground prose prose-sm dark:prose-invert max-w-none"
               }`}
             >
-              {msg.content}
+              {msg.role === "user" ? (
+                msg.content
+              ) : msg.content ? (
+                <ReactMarkdown>{msg.content}</ReactMarkdown>
+              ) : (
+                <span className="text-muted-foreground">thinking…</span>
+              )}
             </div>
           </motion.div>
         ))}
 
-        {/* Suggestions */}
-        {messages.length <= 2 && (
+        {messages.length === 0 && (
           <div className="flex flex-wrap gap-2 mt-4">
             {suggestions.map((s) => (
               <button
                 key={s}
-                onClick={() => {
-                  setInput(s);
-                }}
+                onClick={() => handleSend(s)}
                 className="px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
               >
                 {s}
@@ -106,7 +128,6 @@ const AITutor = () => {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <div className="p-4 border-t border-border">
         <form
           onSubmit={(e) => {
@@ -120,10 +141,17 @@ const AITutor = () => {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about TOC concepts..."
             className="flex-1 font-mono text-sm"
+            disabled={isStreaming}
           />
-          <Button type="submit" size="sm" disabled={!input.trim()}>
-            <Send className="w-4 h-4" />
-          </Button>
+          {isStreaming ? (
+            <Button type="button" size="sm" variant="secondary" onClick={() => abortRef.current?.abort()}>
+              <Square className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button type="submit" size="sm" disabled={!input.trim()}>
+              <Send className="w-4 h-4" />
+            </Button>
+          )}
         </form>
       </div>
     </motion.div>
