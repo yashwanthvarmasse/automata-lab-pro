@@ -161,6 +161,26 @@ const PushDownAutomata = () => {
             </p>
           </div>
 
+          {/* State diagram */}
+          <div className="glass-panel p-2">
+            <div className="px-2 pt-1 pb-2 flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">State diagram</span>
+              <span className="text-[10px] text-muted-foreground font-mono">label: read, pop / push</span>
+            </div>
+            <div className="h-[300px]">
+              <AutomataGraph
+                states={graphStates}
+                transitions={graphTransitions}
+                activeStates={current ? [current.config.state] : []}
+                simulationStatus={sim ? (sim.accepted ? "accepted" : "rejected") : null}
+                onMoveState={(id, x, y) =>
+                  setStates(prev => prev.map(s => (s.id === id ? { ...s, x, y } : s)))
+                }
+              />
+            </div>
+          </div>
+
+
           {/* Simulation view */}
           {sim && current && (
             <div className="glass-panel p-4 space-y-4">
