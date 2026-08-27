@@ -14,6 +14,8 @@ import {
   type TMConfig,
   type TMStep,
 } from "@/lib/turing-engine";
+import { useModuleDetails } from "@/lib/page-context";
+
 
 
 const TuringMachine = () => {
