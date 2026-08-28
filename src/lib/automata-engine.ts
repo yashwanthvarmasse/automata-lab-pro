@@ -150,13 +150,63 @@ export function generateTransitionTable(
   return table;
 }
 
-// NFA to DFA conversion (Subset Construction) — with q0, q1, q2... naming
+// Layered left-to-right layout (BFS from start) so generated diagrams read cleanly
+export function layoutAutomaton(states: FAState[], transitions: FATransition[]): FAState[] {
+  if (states.length === 0) return states;
+  const start = states.find((s) => s.isStart) ?? states[0];
+
+  const depth = new Map<string, number>([[start.id, 0]]);
+  const queue = [start.id];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const d = depth.get(cur)!;
+    transitions
+      .filter((t) => t.from === cur)
+      .forEach((t) => {
+        if (!depth.has(t.to)) {
+          depth.set(t.to, d + 1);
+          queue.push(t.to);
+        }
+      });
+  }
+  let maxDepth = 0;
+  depth.forEach((d) => (maxDepth = Math.max(maxDepth, d)));
+  states.forEach((s) => {
+    if (!depth.has(s.id)) depth.set(s.id, maxDepth + 1);
+  });
+
+  const layers = new Map<number, string[]>();
+  states.forEach((s) => {
+    const d = depth.get(s.id)!;
+    if (!layers.has(d)) layers.set(d, []);
+    layers.get(d)!.push(s.id);
+  });
+
+  const X0 = 140, Y0 = 260, X_GAP = 190, Y_GAP = 130;
+  const positions = new Map<string, { x: number; y: number }>();
+  layers.forEach((ids, d) => {
+    ids.forEach((id, i) => {
+      positions.set(id, {
+        x: X0 + d * X_GAP,
+        y: Y0 + (i - (ids.length - 1) / 2) * Y_GAP,
+      });
+    });
+  });
+
+  return states.map((s) => ({ ...s, ...positions.get(s.id)! }));
+}
+
+// NFA to DFA conversion (Subset Construction) — subset labels like q0q1
 export function nfaToDfa(automaton: Automaton): Automaton {
   const startState = automaton.states.find((s) => s.isStart);
   if (!startState) return { states: [], transitions: [], alphabet: [] };
 
   const alphabet = getAlphabet(automaton.transitions);
-  const startClosure = epsilonClosure([startState.id], automaton.transitions).sort();
+  const order = new Map(automaton.states.map((s, i) => [s.id, i]));
+  const sortIds = (ids: string[]) =>
+    [...ids].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+
+  const startClosure = sortIds(epsilonClosure([startState.id], automaton.transitions));
   const startKey = startClosure.join(",");
 
   const dfaStatesMap = new Map<string, string[]>();
@@ -176,7 +226,7 @@ export function nfaToDfa(automaton: Automaton): Automaton {
 
     alphabet.forEach((symbol) => {
       const moveResult = move(currentStates, symbol, automaton.transitions);
-      const closure = epsilonClosure(moveResult, automaton.transitions).sort();
+      const closure = sortIds(epsilonClosure(moveResult, automaton.transitions));
 
       if (closure.length === 0) return;
 
@@ -195,39 +245,32 @@ export function nfaToDfa(automaton: Automaton): Automaton {
     });
   }
 
-  // Create DFA states with q0, q1, q2... labels
   const stateKeys = Array.from(dfaStatesMap.keys());
-  const angleStep = (2 * Math.PI) / Math.max(stateKeys.length, 1);
-  const radius = Math.min(150, stateKeys.length * 30);
 
-  // Build label map: show combined NFA state names for subset construction
-  const stateLabels = new Map<string, string>();
-  stateKeys.forEach((key, i) => {
+  const dfaStates: FAState[] = stateKeys.map((key) => {
     const nfaIds = dfaStatesMap.get(key)!;
-    const nfaLabels = nfaIds
+    const label = nfaIds
       .map((sid) => automaton.states.find((s) => s.id === sid)?.label || sid)
       .join("");
-    // Use q0, q1... as primary label with NFA subset as tooltip/secondary
-    stateLabels.set(key, `q${i}`);
-  });
-
-  const dfaStates: FAState[] = stateKeys.map((key, i) => {
-    const nfaIds = dfaStatesMap.get(key)!;
     const isAccept = nfaIds.some((sid) =>
       automaton.states.find((s) => s.id === sid)?.isAccept
     );
 
     return {
       id: key,
-      label: `q${i}`,
-      x: 300 + radius * Math.cos(angleStep * i - Math.PI / 2),
-      y: 250 + radius * Math.sin(angleStep * i - Math.PI / 2),
+      label,
+      x: 0,
+      y: 0,
       isStart: key === startKey,
-      isAccept: isAccept,
+      isAccept,
     };
   });
 
-  return { states: dfaStates, transitions: dfaTransitions, alphabet };
+  return {
+    states: layoutAutomaton(dfaStates, dfaTransitions),
+    transitions: dfaTransitions,
+    alphabet,
+  };
 }
 
 // DFA Minimization (Hopcroft's algorithm)
