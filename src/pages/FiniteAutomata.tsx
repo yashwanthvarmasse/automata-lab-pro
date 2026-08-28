@@ -68,21 +68,24 @@ const FiniteAutomata = () => {
     };
   }, [isPlaying, simulationSteps.length]);
 
-  let stateCounter = useRef(states.length);
-
   const addState = useCallback(() => {
-    const idx = stateCounter.current++;
-    const angle = (idx * Math.PI * 2) / Math.max(idx + 1, 4);
-    const newState: FAState = {
-      id: `q${idx}`,
-      label: `q${idx < 10 ? "₀₁₂₃₄₅₆₇₈₉"[idx] : idx}`,
-      x: 350 + 120 * Math.cos(angle),
-      y: 250 + 120 * Math.sin(angle),
-      isStart: states.length === 0,
-      isAccept: false,
-    };
-    setStates((prev) => [...prev, newState]);
-  }, [states.length]);
+    setStates((prev) => {
+      // always pick a free q-index so ids stay unique after conversions/deletes
+      let idx = prev.length;
+      const used = new Set(prev.map((s) => s.id));
+      while (used.has(`q${idx}`)) idx++;
+      const angle = (prev.length * Math.PI * 2) / 6;
+      const newState: FAState = {
+        id: `q${idx}`,
+        label: `q${idx}`,
+        x: 350 + 150 * Math.cos(angle),
+        y: 260 + 150 * Math.sin(angle),
+        isStart: prev.length === 0,
+        isAccept: false,
+      };
+      return [...prev, newState];
+    });
+  }, []);
 
   const deleteState = useCallback((id: string) => {
     setStates((prev) => prev.filter((s) => s.id !== id));
