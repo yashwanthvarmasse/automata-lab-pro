@@ -204,12 +204,25 @@ const FiniteAutomata = () => {
             Design, simulate, and convert DFA / NFA
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={handleLoadSample}>
-            <Upload className="w-3 h-3 mr-2" /> Sample
+            <Upload className="w-3 h-3 mr-2" /> Sample DFA
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleLoadSampleNFA}>
+            <Upload className="w-3 h-3 mr-2" /> Sample NFA
           </Button>
           <Button variant="outline" size="sm" onClick={handleConvertToDFA}>
             <Shuffle className="w-3 h-3 mr-2" /> NFA → DFA
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleMinimize}>
+            <Shuffle className="w-3 h-3 mr-2" /> Minimize DFA
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setStates((prev) => layoutAutomaton(prev, transitions))}
+          >
+            <Shuffle className="w-3 h-3 mr-2" /> Auto Layout
           </Button>
           <Button
             variant="outline"
