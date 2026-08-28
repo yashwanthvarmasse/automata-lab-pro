@@ -9,8 +9,11 @@ import SimulationPanel from "@/components/automata/SimulationPanel";
 import TransitionTableView from "@/components/automata/TransitionTableView";
 import {
   createSampleDFA,
+  createSampleNFA,
   simulateString,
   nfaToDfa,
+  minimizeDFA,
+  layoutAutomaton,
   type FAState,
   type FATransition,
   type SimulationStep,
