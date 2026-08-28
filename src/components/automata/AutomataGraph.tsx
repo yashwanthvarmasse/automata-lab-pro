@@ -276,7 +276,7 @@ const AutomataGraph = ({
           <g
             key={state.id}
             className="state-node cursor-grab active:cursor-grabbing"
-            onMouseDown={(e) => handleMouseDown(e, state.id)}
+            onPointerDown={(e) => handleMouseDown(e, state.id)}
             filter={isActive ? "url(#glow-active)" : undefined}
           >
             {state.isAccept && (
