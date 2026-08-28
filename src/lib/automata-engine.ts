@@ -150,13 +150,63 @@ export function generateTransitionTable(
   return table;
 }
 
-// NFA to DFA conversion (Subset Construction) — with q0, q1, q2... naming
+// Layered left-to-right layout (BFS from start) so generated diagrams read cleanly
+export function layoutAutomaton(states: FAState[], transitions: FATransition[]): FAState[] {
+  if (states.length === 0) return states;
+  const start = states.find((s) => s.isStart) ?? states[0];
+
+  const depth = new Map<string, number>([[start.id, 0]]);
+  const queue = [start.id];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const d = depth.get(cur)!;
+    transitions
+      .filter((t) => t.from === cur)
+      .forEach((t) => {
+        if (!depth.has(t.to)) {
+          depth.set(t.to, d + 1);
+          queue.push(t.to);
+        }
+      });
+  }
+  let maxDepth = 0;
+  depth.forEach((d) => (maxDepth = Math.max(maxDepth, d)));
+  states.forEach((s) => {
+    if (!depth.has(s.id)) depth.set(s.id, maxDepth + 1);
+  });
+
+  const layers = new Map<number, string[]>();
+  states.forEach((s) => {
+    const d = depth.get(s.id)!;
+    if (!layers.has(d)) layers.set(d, []);
+    layers.get(d)!.push(s.id);
+  });
+
+  const X0 = 140, Y0 = 260, X_GAP = 190, Y_GAP = 130;
+  const positions = new Map<string, { x: number; y: number }>();
+  layers.forEach((ids, d) => {
+    ids.forEach((id, i) => {
+      positions.set(id, {
+        x: X0 + d * X_GAP,
+        y: Y0 + (i - (ids.length - 1) / 2) * Y_GAP,
+      });
+    });
+  });
+
+  return states.map((s) => ({ ...s, ...positions.get(s.id)! }));
+}
+
+// NFA to DFA conversion (Subset Construction) — subset labels like q0q1
 export function nfaToDfa(automaton: Automaton): Automaton {
   const startState = automaton.states.find((s) => s.isStart);
   if (!startState) return { states: [], transitions: [], alphabet: [] };
 
   const alphabet = getAlphabet(automaton.transitions);
-  const startClosure = epsilonClosure([startState.id], automaton.transitions).sort();
+  const order = new Map(automaton.states.map((s, i) => [s.id, i]));
+  const sortIds = (ids: string[]) =>
+    [...ids].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+
+  const startClosure = sortIds(epsilonClosure([startState.id], automaton.transitions));
   const startKey = startClosure.join(",");
 
   const dfaStatesMap = new Map<string, string[]>();
@@ -176,7 +226,7 @@ export function nfaToDfa(automaton: Automaton): Automaton {
 
     alphabet.forEach((symbol) => {
       const moveResult = move(currentStates, symbol, automaton.transitions);
-      const closure = epsilonClosure(moveResult, automaton.transitions).sort();
+      const closure = sortIds(epsilonClosure(moveResult, automaton.transitions));
 
       if (closure.length === 0) return;
 
@@ -195,113 +245,123 @@ export function nfaToDfa(automaton: Automaton): Automaton {
     });
   }
 
-  // Create DFA states with q0, q1, q2... labels
   const stateKeys = Array.from(dfaStatesMap.keys());
-  const angleStep = (2 * Math.PI) / Math.max(stateKeys.length, 1);
-  const radius = Math.min(150, stateKeys.length * 30);
 
-  // Build label map: show combined NFA state names for subset construction
-  const stateLabels = new Map<string, string>();
-  stateKeys.forEach((key, i) => {
+  const dfaStates: FAState[] = stateKeys.map((key) => {
     const nfaIds = dfaStatesMap.get(key)!;
-    const nfaLabels = nfaIds
+    const label = nfaIds
       .map((sid) => automaton.states.find((s) => s.id === sid)?.label || sid)
       .join("");
-    // Use q0, q1... as primary label with NFA subset as tooltip/secondary
-    stateLabels.set(key, `q${i}`);
-  });
-
-  const dfaStates: FAState[] = stateKeys.map((key, i) => {
-    const nfaIds = dfaStatesMap.get(key)!;
     const isAccept = nfaIds.some((sid) =>
       automaton.states.find((s) => s.id === sid)?.isAccept
     );
 
     return {
       id: key,
-      label: `q${i}`,
-      x: 300 + radius * Math.cos(angleStep * i - Math.PI / 2),
-      y: 250 + radius * Math.sin(angleStep * i - Math.PI / 2),
+      label,
+      x: 0,
+      y: 0,
       isStart: key === startKey,
-      isAccept: isAccept,
+      isAccept,
     };
   });
 
-  return { states: dfaStates, transitions: dfaTransitions, alphabet };
+  return {
+    states: layoutAutomaton(dfaStates, dfaTransitions),
+    transitions: dfaTransitions,
+    alphabet,
+  };
 }
 
-// DFA Minimization (Hopcroft's algorithm)
+// DFA Minimization (partition refinement) — works on the reachable, live part of the DFA
 export function minimizeDFA(automaton: Automaton): Automaton {
   const { states, transitions, alphabet: inputAlphabet } = automaton;
   const alphabet = inputAlphabet.length > 0 ? inputAlphabet : getAlphabet(transitions);
-  
-  if (states.length === 0) return automaton;
 
-  // Build transition map
+  if (states.length === 0) return automaton;
+  const start = states.find((s) => s.isStart);
+  if (!start) return automaton;
+
+  // 1. keep only states reachable from the start state
+  const reachable = new Set<string>([start.id]);
+  const queue = [start.id];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    transitions
+      .filter((t) => t.from === cur)
+      .forEach((t) => {
+        if (!reachable.has(t.to)) {
+          reachable.add(t.to);
+          queue.push(t.to);
+        }
+      });
+  }
+  const liveStates = states.filter((s) => reachable.has(s.id));
+  const liveTransitions = transitions.filter(
+    (t) => reachable.has(t.from) && reachable.has(t.to)
+  );
+
+  // 2. deterministic transition map
   const transMap = new Map<string, Map<string, string>>();
-  states.forEach(s => transMap.set(s.id, new Map()));
-  transitions.forEach(t => {
-    transMap.get(t.from)?.set(t.symbol, t.to);
+  liveStates.forEach((s) => transMap.set(s.id, new Map()));
+  liveTransitions.forEach((t) => {
+    const m = transMap.get(t.from);
+    if (m && !m.has(t.symbol)) m.set(t.symbol, t.to);
   });
 
-  // Initial partition: accept vs non-accept
-  const acceptIds = new Set(states.filter(s => s.isAccept).map(s => s.id));
-  const nonAcceptIds = new Set(states.filter(s => !s.isAccept).map(s => s.id));
+  // 3. initial partition: accepting vs non-accepting
+  const acceptIds = new Set(liveStates.filter((s) => s.isAccept).map((s) => s.id));
+  const nonAcceptIds = new Set(liveStates.filter((s) => !s.isAccept).map((s) => s.id));
 
   let partitions: Set<string>[] = [];
   if (acceptIds.size > 0) partitions.push(acceptIds);
   if (nonAcceptIds.size > 0) partitions.push(nonAcceptIds);
 
-  // Refine partitions
+  // 4. refine until stable
   let changed = true;
   while (changed) {
     changed = false;
     const newPartitions: Set<string>[] = [];
-    
+
     for (const partition of partitions) {
       const splits = new Map<string, Set<string>>();
-      
+
       for (const stateId of partition) {
-        // Build signature: for each symbol, which partition does the target belong to?
-        const sig = alphabet.map(sym => {
-          const target = transMap.get(stateId)?.get(sym);
-          if (!target) return -1;
-          return partitions.findIndex(p => p.has(target));
-        }).join(",");
-        
+        const sig = alphabet
+          .map((sym) => {
+            const target = transMap.get(stateId)?.get(sym);
+            if (target === undefined) return "-";
+            return String(partitions.findIndex((p) => p.has(target)));
+          })
+          .join(",");
+
         if (!splits.has(sig)) splits.set(sig, new Set());
         splits.get(sig)!.add(stateId);
       }
-      
+
       if (splits.size > 1) changed = true;
-      for (const group of splits.values()) {
-        newPartitions.push(group);
-      }
+      for (const group of splits.values()) newPartitions.push(group);
     }
-    
+
     partitions = newPartitions;
   }
 
-  // Build minimized DFA
+  // keep the start partition first so labels read q0, q1, ...
+  partitions.sort((a, b) => (a.has(start.id) ? -1 : b.has(start.id) ? 1 : 0));
+
   const stateToPartition = new Map<string, number>();
   partitions.forEach((p, i) => {
     for (const sid of p) stateToPartition.set(sid, i);
   });
 
-  const angleStep = (2 * Math.PI) / Math.max(partitions.length, 1);
-  const radius = Math.min(150, partitions.length * 35);
-
-  const minStates: FAState[] = partitions.map((partition, i) => {
-    const representative = states.find(s => partition.has(s.id))!;
-    return {
-      id: `mq${i}`,
-      label: `q${i}`,
-      x: 300 + radius * Math.cos(angleStep * i - Math.PI / 2),
-      y: 250 + radius * Math.sin(angleStep * i - Math.PI / 2),
-      isStart: Array.from(partition).some(sid => states.find(s => s.id === sid)?.isStart),
-      isAccept: Array.from(partition).some(sid => states.find(s => s.id === sid)?.isAccept),
-    };
-  });
+  const minStates: FAState[] = partitions.map((partition, i) => ({
+    id: `mq${i}`,
+    label: `q${i}`,
+    x: 0,
+    y: 0,
+    isStart: Array.from(partition).some((sid) => states.find((s) => s.id === sid)?.isStart),
+    isAccept: Array.from(partition).some((sid) => states.find((s) => s.id === sid)?.isAccept),
+  }));
 
   const minTransitions: FATransition[] = [];
   const seenTrans = new Set<string>();
@@ -309,7 +369,7 @@ export function minimizeDFA(automaton: Automaton): Automaton {
 
   partitions.forEach((partition, i) => {
     const representative = Array.from(partition)[0];
-    alphabet.forEach(sym => {
+    alphabet.forEach((sym) => {
       const target = transMap.get(representative)?.get(sym);
       if (target === undefined) return;
       const targetPartition = stateToPartition.get(target)!;
@@ -325,7 +385,27 @@ export function minimizeDFA(automaton: Automaton): Automaton {
     });
   });
 
-  return { states: minStates, transitions: minTransitions, alphabet };
+  return {
+    states: layoutAutomaton(minStates, minTransitions),
+    transitions: minTransitions,
+    alphabet,
+  };
+}
+
+// Create a sample NFA (strings over {0,1} ending in "01") — has nondeterminism + ε
+export function createSampleNFA(): Automaton {
+  const states: FAState[] = [
+    { id: "q0", label: "q0", x: 0, y: 0, isStart: true, isAccept: false },
+    { id: "q1", label: "q1", x: 0, y: 0, isStart: false, isAccept: false },
+    { id: "q2", label: "q2", x: 0, y: 0, isStart: false, isAccept: true },
+  ];
+  const transitions: FATransition[] = [
+    { id: "n1", from: "q0", to: "q0", symbol: "0" },
+    { id: "n2", from: "q0", to: "q0", symbol: "1" },
+    { id: "n3", from: "q0", to: "q1", symbol: "0" },
+    { id: "n4", from: "q1", to: "q2", symbol: "1" },
+  ];
+  return { states: layoutAutomaton(states, transitions), transitions, alphabet: ["0", "1"] };
 }
 
 // Create a sample DFA

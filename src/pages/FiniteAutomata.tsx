@@ -9,8 +9,11 @@ import SimulationPanel from "@/components/automata/SimulationPanel";
 import TransitionTableView from "@/components/automata/TransitionTableView";
 import {
   createSampleDFA,
+  createSampleNFA,
   simulateString,
   nfaToDfa,
+  minimizeDFA,
+  layoutAutomaton,
   type FAState,
   type FATransition,
   type SimulationStep,
@@ -68,21 +71,24 @@ const FiniteAutomata = () => {
     };
   }, [isPlaying, simulationSteps.length]);
 
-  let stateCounter = useRef(states.length);
-
   const addState = useCallback(() => {
-    const idx = stateCounter.current++;
-    const angle = (idx * Math.PI * 2) / Math.max(idx + 1, 4);
-    const newState: FAState = {
-      id: `q${idx}`,
-      label: `q${idx < 10 ? "₀₁₂₃₄₅₆₇₈₉"[idx] : idx}`,
-      x: 350 + 120 * Math.cos(angle),
-      y: 250 + 120 * Math.sin(angle),
-      isStart: states.length === 0,
-      isAccept: false,
-    };
-    setStates((prev) => [...prev, newState]);
-  }, [states.length]);
+    setStates((prev) => {
+      // always pick a free q-index so ids stay unique after conversions/deletes
+      let idx = prev.length;
+      const used = new Set(prev.map((s) => s.id));
+      while (used.has(`q${idx}`)) idx++;
+      const angle = (prev.length * Math.PI * 2) / 6;
+      const newState: FAState = {
+        id: `q${idx}`,
+        label: `q${idx}`,
+        x: 350 + 150 * Math.cos(angle),
+        y: 260 + 150 * Math.sin(angle),
+        isStart: prev.length === 0,
+        isAccept: false,
+      };
+      return [...prev, newState];
+    });
+  }, []);
 
   const deleteState = useCallback((id: string) => {
     setStates((prev) => prev.filter((s) => s.id !== id));
@@ -140,16 +146,36 @@ const FiniteAutomata = () => {
   const handleConvertToDFA = useCallback(() => {
     const automaton: Automaton = { states, transitions, alphabet: [] };
     const dfa = nfaToDfa(automaton);
+    if (dfa.states.length === 0) return;
     setStates(dfa.states);
     setTransitions(dfa.transitions);
+    setSelectedState(null);
+    handleReset();
+  }, [states, transitions, handleReset]);
+
+  const handleMinimize = useCallback(() => {
+    const dfa = nfaToDfa({ states, transitions, alphabet: [] });
+    if (dfa.states.length === 0) return;
+    const min = minimizeDFA(dfa);
+    setStates(min.states);
+    setTransitions(min.transitions);
+    setSelectedState(null);
     handleReset();
   }, [states, transitions, handleReset]);
 
   const handleLoadSample = useCallback(() => {
     const sample = createSampleDFA();
+    setStates(layoutAutomaton(sample.states, sample.transitions));
+    setTransitions(sample.transitions);
+    setSelectedState(null);
+    handleReset();
+  }, [handleReset]);
+
+  const handleLoadSampleNFA = useCallback(() => {
+    const sample = createSampleNFA();
     setStates(sample.states);
     setTransitions(sample.transitions);
-    stateCounter.current = sample.states.length;
+    setSelectedState(null);
     handleReset();
   }, [handleReset]);
 
@@ -178,12 +204,25 @@ const FiniteAutomata = () => {
             Design, simulate, and convert DFA / NFA
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={handleLoadSample}>
-            <Upload className="w-3 h-3 mr-2" /> Sample
+            <Upload className="w-3 h-3 mr-2" /> Sample DFA
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleLoadSampleNFA}>
+            <Upload className="w-3 h-3 mr-2" /> Sample NFA
           </Button>
           <Button variant="outline" size="sm" onClick={handleConvertToDFA}>
             <Shuffle className="w-3 h-3 mr-2" /> NFA → DFA
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleMinimize}>
+            <Shuffle className="w-3 h-3 mr-2" /> Minimize DFA
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setStates((prev) => layoutAutomaton(prev, transitions))}
+          >
+            <Shuffle className="w-3 h-3 mr-2" /> Auto Layout
           </Button>
           <Button
             variant="outline"
