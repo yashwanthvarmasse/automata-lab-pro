@@ -195,10 +195,10 @@ const AutomataGraph = ({
       className="w-full h-full bg-background rounded-xl"
       viewBox={viewBox}
       preserveAspectRatio="xMidYMid meet"
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onClick={() => onSelectState?.(null)}
+      onPointerMove={handleMouseMove}
+      onPointerUp={handleMouseUp}
+      onPointerLeave={handleMouseUp}
+      onClick={handleBackgroundClick}
     >
 
       <defs>
