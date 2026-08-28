@@ -143,16 +143,36 @@ const FiniteAutomata = () => {
   const handleConvertToDFA = useCallback(() => {
     const automaton: Automaton = { states, transitions, alphabet: [] };
     const dfa = nfaToDfa(automaton);
+    if (dfa.states.length === 0) return;
     setStates(dfa.states);
     setTransitions(dfa.transitions);
+    setSelectedState(null);
+    handleReset();
+  }, [states, transitions, handleReset]);
+
+  const handleMinimize = useCallback(() => {
+    const dfa = nfaToDfa({ states, transitions, alphabet: [] });
+    if (dfa.states.length === 0) return;
+    const min = minimizeDFA(dfa);
+    setStates(min.states);
+    setTransitions(min.transitions);
+    setSelectedState(null);
     handleReset();
   }, [states, transitions, handleReset]);
 
   const handleLoadSample = useCallback(() => {
     const sample = createSampleDFA();
+    setStates(layoutAutomaton(sample.states, sample.transitions));
+    setTransitions(sample.transitions);
+    setSelectedState(null);
+    handleReset();
+  }, [handleReset]);
+
+  const handleLoadSampleNFA = useCallback(() => {
+    const sample = createSampleNFA();
     setStates(sample.states);
     setTransitions(sample.transitions);
-    stateCounter.current = sample.states.length;
+    setSelectedState(null);
     handleReset();
   }, [handleReset]);
 
