@@ -24,10 +24,11 @@ const AutomataGraph = ({
 }: AutomataGraphProps) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const movedRef = useRef(false);
 
   const getSVGCoords = useCallback(
-    (e: React.MouseEvent) => {
+    (e: { clientX: number; clientY: number }) => {
       const svg = svgRef.current;
       if (!svg) return { x: 0, y: 0 };
       const pt = svg.createSVGPoint();
@@ -40,30 +41,46 @@ const AutomataGraph = ({
   );
 
   const handleMouseDown = useCallback(
-    (e: React.MouseEvent, stateId: string) => {
+    (e: React.PointerEvent, stateId: string) => {
       e.stopPropagation();
+      e.preventDefault();
       const state = states.find((s) => s.id === stateId);
       if (!state) return;
       const coords = getSVGCoords(e);
+      offsetRef.current = { x: coords.x - state.x, y: coords.y - state.y };
+      movedRef.current = false;
       setDragging(stateId);
-      setOffset({ x: coords.x - state.x, y: coords.y - state.y });
+      // selecting on pointer-down keeps the properties panel in sync
       onSelectState?.(stateId);
     },
     [states, getSVGCoords, onSelectState]
   );
 
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.PointerEvent) => {
       if (!dragging) return;
       const coords = getSVGCoords(e);
-      onMoveState?.(dragging, coords.x - offset.x, coords.y - offset.y);
+      movedRef.current = true;
+      onMoveState?.(dragging, coords.x - offsetRef.current.x, coords.y - offsetRef.current.y);
     },
-    [dragging, offset, getSVGCoords, onMoveState]
+    [dragging, getSVGCoords, onMoveState]
   );
 
   const handleMouseUp = useCallback(() => {
     setDragging(null);
   }, []);
+
+  const handleBackgroundClick = useCallback(
+    (e: React.MouseEvent) => {
+      // only clear selection when clicking empty canvas (never right after a drag)
+      if (movedRef.current) {
+        movedRef.current = false;
+        return;
+      }
+      if (e.target === svgRef.current) onSelectState?.(null);
+    },
+    [onSelectState]
+  );
 
   const getTransitionsBetween = (fromId: string, toId: string) =>
     transitions.filter((t) => t.from === fromId && t.to === toId);
