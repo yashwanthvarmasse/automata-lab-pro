@@ -115,6 +115,7 @@ const AutomataGraph = ({
   const handleBackgroundPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (dragRef.current) return;
+      e.preventDefault();
       svgRef.current?.setPointerCapture?.(e.pointerId);
       panRef.current = { x: e.clientX, y: e.clientY, view };
       movedRef.current = false;
