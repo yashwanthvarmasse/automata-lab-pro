@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import type { FAState, FATransition } from "@/lib/automata-engine";
 
 interface AutomataGraphProps {
@@ -12,6 +13,14 @@ interface AutomataGraphProps {
 }
 
 const STATE_RADIUS = 26;
+const PAD = 90;
+
+interface View {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 const AutomataGraph = ({
   states,
@@ -23,63 +32,165 @@ const AutomataGraph = ({
   simulationStatus,
 }: AutomataGraphProps) => {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
+  const dragRef = useRef<string | null>(null);
   const offsetRef = useRef({ x: 0, y: 0 });
   const movedRef = useRef(false);
+  const panRef = useRef<{ x: number; y: number; view: View } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [view, setView] = useState<View>({ x: 0, y: 0, w: 800, h: 600 });
+  const touchedRef = useRef(false);
+  const sizeRef = useRef({ w: 800, h: 600 });
 
-  const getSVGCoords = useCallback(
-    (e: { clientX: number; clientY: number }) => {
-      const svg = svgRef.current;
-      if (!svg) return { x: 0, y: 0 };
-      const pt = svg.createSVGPoint();
-      pt.x = e.clientX;
-      pt.y = e.clientY;
-      const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-      return { x: transformed.x, y: transformed.y };
-    },
-    []
-  );
+  // keep aspect ratio in sync with the container so panning feels 1:1
+  useLayoutEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height) sizeRef.current = { w: r.width, h: r.height };
+    });
+    ro.observe(el);
+    const r = el.getBoundingClientRect();
+    if (r.width && r.height) sizeRef.current = { w: r.width, h: r.height };
+    return () => ro.disconnect();
+  }, []);
 
-  const handleMouseDown = useCallback(
+  const fit = useCallback(() => {
+    if (states.length === 0) {
+      setView({ x: 0, y: 0, w: 800, h: 600 });
+      return;
+    }
+    const xs = states.map((s) => s.x);
+    const ys = states.map((s) => s.y);
+    const minX = Math.min(...xs) - PAD;
+    const minY = Math.min(...ys) - PAD;
+    let w = Math.max(Math.max(...xs) + PAD - minX, 260);
+    let h = Math.max(Math.max(...ys) + PAD - minY, 260);
+    // match container aspect ratio so there is no hidden overflow
+    const ar = sizeRef.current.w / sizeRef.current.h;
+    if (w / h > ar) h = w / ar;
+    else w = h * ar;
+    setView({
+      x: minX - (w - (Math.max(...xs) + PAD - minX)) / 2,
+      y: minY - (h - (Math.max(...ys) + PAD - minY)) / 2,
+      w,
+      h,
+    });
+    touchedRef.current = false;
+  }, [states]);
+
+  // auto-fit when the automaton is (re)loaded, never while the user is arranging
+  const countKey = `${states.length}:${transitions.length}`;
+  useEffect(() => {
+    if (!touchedRef.current) fit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countKey]);
+
+  const toSVG = useCallback((clientX: number, clientY: number) => {
+    const el = svgRef.current;
+    if (!el) return { x: 0, y: 0 };
+    const r = el.getBoundingClientRect();
+    return {
+      x: view.x + ((clientX - r.left) / r.width) * view.w,
+      y: view.y + ((clientY - r.top) / r.height) * view.h,
+    };
+  }, [view]);
+
+  const handleStatePointerDown = useCallback(
     (e: React.PointerEvent, stateId: string) => {
       e.stopPropagation();
       e.preventDefault();
       const state = states.find((s) => s.id === stateId);
       if (!state) return;
-      const coords = getSVGCoords(e);
-      offsetRef.current = { x: coords.x - state.x, y: coords.y - state.y };
+      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+      const p = toSVG(e.clientX, e.clientY);
+      offsetRef.current = { x: p.x - state.x, y: p.y - state.y };
       movedRef.current = false;
-      setDragging(stateId);
-      // selecting on pointer-down keeps the properties panel in sync
+      dragRef.current = stateId;
       onSelectState?.(stateId);
     },
-    [states, getSVGCoords, onSelectState]
+    [states, toSVG, onSelectState]
   );
 
-  const handleMouseMove = useCallback(
+  const handleBackgroundPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (!dragging) return;
-      const coords = getSVGCoords(e);
-      movedRef.current = true;
-      onMoveState?.(dragging, coords.x - offsetRef.current.x, coords.y - offsetRef.current.y);
+      if (dragRef.current) return;
+      svgRef.current?.setPointerCapture?.(e.pointerId);
+      panRef.current = { x: e.clientX, y: e.clientY, view };
+      movedRef.current = false;
+      setIsPanning(true);
     },
-    [dragging, getSVGCoords, onMoveState]
+    [view]
   );
 
-  const handleMouseUp = useCallback(() => {
-    setDragging(null);
-  }, []);
-
-  const handleBackgroundClick = useCallback(
-    (e: React.MouseEvent) => {
-      // only clear selection when clicking empty canvas (never right after a drag)
-      if (movedRef.current) {
-        movedRef.current = false;
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (dragRef.current) {
+        const p = toSVG(e.clientX, e.clientY);
+        movedRef.current = true;
+        touchedRef.current = true;
+        onMoveState?.(dragRef.current, p.x - offsetRef.current.x, p.y - offsetRef.current.y);
         return;
       }
-      if (e.target === svgRef.current) onSelectState?.(null);
+      const pan = panRef.current;
+      if (!pan) return;
+      const el = svgRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const dx = ((e.clientX - pan.x) / r.width) * pan.view.w;
+      const dy = ((e.clientY - pan.y) / r.height) * pan.view.h;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) movedRef.current = true;
+      touchedRef.current = true;
+      setView({ ...pan.view, x: pan.view.x - dx, y: pan.view.y - dy });
+    },
+    [toSVG, onMoveState]
+  );
+
+  const endInteraction = useCallback(
+    (e: React.PointerEvent) => {
+      const wasPanning = !!panRef.current;
+      const wasDragging = !!dragRef.current;
+      dragRef.current = null;
+      panRef.current = null;
+      setIsPanning(false);
+      try {
+        (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+      } catch {
+        /* noop */
+      }
+      // clicking empty canvas (no pan movement, no node drag) clears selection
+      if (wasPanning && !wasDragging && !movedRef.current) onSelectState?.(null);
+      movedRef.current = false;
     },
     [onSelectState]
+  );
+
+  const zoomAt = useCallback(
+    (factor: number, clientX?: number, clientY?: number) => {
+      touchedRef.current = true;
+      setView((v) => {
+        const el = svgRef.current;
+        const r = el?.getBoundingClientRect();
+        const rx = r && clientX !== undefined ? (clientX - r.left) / r.width : 0.5;
+        const ry = r && clientY !== undefined ? (clientY - r.top) / r.height : 0.5;
+        const nw = Math.min(Math.max(v.w * factor, 120), 8000);
+        const nh = nw * (v.h / v.w);
+        return {
+          x: v.x + (v.w - nw) * rx,
+          y: v.y + (v.h - nh) * ry,
+          w: nw,
+          h: nh,
+        };
+      });
+    },
+    []
+  );
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      zoomAt(e.deltaY > 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
+    },
+    [zoomAt]
   );
 
   const getTransitionsBetween = (fromId: string, toId: string) =>
@@ -88,7 +199,13 @@ const AutomataGraph = ({
   const getReverse = (fromId: string, toId: string) =>
     transitions.some((t) => t.from === toId && t.to === fromId);
 
-  const renderTransition = (fromState: FAState, toState: FAState, symbols: string[], hasReverse: boolean, index: number) => {
+  const renderTransition = (
+    fromState: FAState,
+    toState: FAState,
+    symbols: string[],
+    hasReverse: boolean,
+    index: number
+  ) => {
     const isSelf = fromState.id === toState.id;
     const key = `${fromState.id}-${toState.id}-${index}`;
 
@@ -120,7 +237,7 @@ const AutomataGraph = ({
 
     const dx = toState.x - fromState.x;
     const dy = toState.y - fromState.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
     const nx = dx / dist;
     const ny = dy / dist;
 
@@ -141,9 +258,11 @@ const AutomataGraph = ({
     return (
       <g key={key}>
         <path
-          d={curve === 0
-            ? `M ${startX} ${startY} L ${endX} ${endY}`
-            : `M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`}
+          d={
+            curve === 0
+              ? `M ${startX} ${startY} L ${endX} ${endY}`
+              : `M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`
+          }
           fill="none"
           stroke="hsl(var(--muted-foreground))"
           strokeWidth="1.2"
@@ -173,143 +292,183 @@ const AutomataGraph = ({
       renderedPairs.add(pairKey);
       const hasReverse = fromState.id !== toState.id && getReverse(fromState.id, toState.id);
       const symbols = trans.map((t) => t.symbol);
-      transitionElements.push(
-        renderTransition(fromState, toState, symbols, hasReverse, 0)
-      );
+      transitionElements.push(renderTransition(fromState, toState, symbols, hasReverse, 0));
     });
   });
 
-  // Auto-fit: compute a viewBox that contains every state (plus label padding)
-  const PAD = 70;
-  const xs = states.map((s) => s.x);
-  const ys = states.map((s) => s.y);
-  const minX = xs.length ? Math.min(...xs) - PAD : 0;
-  const minY = ys.length ? Math.min(...ys) - PAD : 0;
-  const maxX = xs.length ? Math.max(...xs) + PAD : 800;
-  const maxY = ys.length ? Math.max(...ys) + PAD : 600;
-  const viewBox = `${minX} ${minY} ${Math.max(maxX - minX, 200)} ${Math.max(maxY - minY, 200)}`;
+  const viewBox = `${view.x} ${view.y} ${view.w} ${view.h}`;
+  const gridSize = 40;
 
   return (
-    <svg
-      ref={svgRef}
-      className="w-full h-full bg-background rounded-xl"
-      viewBox={viewBox}
-      preserveAspectRatio="xMidYMid meet"
-      onPointerMove={handleMouseMove}
-      onPointerUp={handleMouseUp}
-      onPointerLeave={handleMouseUp}
-      onClick={handleBackgroundClick}
-    >
+    <div className="relative w-full h-full overflow-hidden">
+      <svg
+        ref={svgRef}
+        className={`w-full h-full bg-background rounded-xl touch-none select-none ${
+          isPanning ? "cursor-grabbing" : "cursor-grab"
+        }`}
+        viewBox={viewBox}
+        preserveAspectRatio="xMidYMid meet"
+        onPointerDown={handleBackgroundPointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endInteraction}
+        onPointerCancel={endInteraction}
+        onWheel={handleWheel}
+        onDoubleClick={fit}
+      >
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="hsl(var(--muted-foreground))" />
+          </marker>
+          <filter id="glow-active">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <pattern id="canvas-grid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="1" fill="hsl(var(--border))" opacity="0.6" />
+          </pattern>
+        </defs>
 
-      <defs>
-        <marker
-          id="arrowhead"
-          markerWidth="10"
-          markerHeight="7"
-          refX="9"
-          refY="3.5"
-          orient="auto"
-        >
-          <polygon
-            points="0 0, 10 3.5, 0 7"
-            fill="hsl(var(--muted-foreground))"
-          />
-        </marker>
-        <filter id="glow-active">
-          <feGaussianBlur stdDeviation="3" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
+        {/* draggable background surface */}
+        <rect
+          x={view.x - view.w}
+          y={view.y - view.h}
+          width={view.w * 3}
+          height={view.h * 3}
+          fill="url(#canvas-grid)"
+        />
 
-      {transitionElements}
+        {transitionElements}
 
-      {/* Start arrow */}
-      {states
-        .filter((s) => s.isStart)
-        .map((s) => (
-          <g key={`start-${s.id}`}>
-            <line
-              x1={s.x - STATE_RADIUS - 30}
-              y1={s.y}
-              x2={s.x - STATE_RADIUS - 4}
-              y2={s.y}
-              stroke="hsl(var(--primary))"
-              strokeWidth="1.5"
-              markerEnd="url(#arrowhead)"
-            />
-            <text
-              x={s.x - STATE_RADIUS - 34}
-              y={s.y - 7}
-              textAnchor="end"
-              className="fill-primary text-[9px] font-mono"
+        {/* Start arrow */}
+        {states
+          .filter((s) => s.isStart)
+          .map((s) => (
+            <g key={`start-${s.id}`}>
+              <line
+                x1={s.x - STATE_RADIUS - 30}
+                y1={s.y}
+                x2={s.x - STATE_RADIUS - 4}
+                y2={s.y}
+                stroke="hsl(var(--primary))"
+                strokeWidth="1.5"
+                markerEnd="url(#arrowhead)"
+              />
+              <text
+                x={s.x - STATE_RADIUS - 34}
+                y={s.y - 7}
+                textAnchor="end"
+                className="fill-primary text-[9px] font-mono"
+              >
+                start
+              </text>
+            </g>
+          ))}
+
+        {/* States */}
+        {states.map((state) => {
+          const isActive = activeStates.includes(state.id);
+          const isSelected = selectedState === state.id;
+
+          let strokeColor = "hsl(var(--border))";
+          let fillColor = "hsl(var(--card))";
+
+          if (isActive && simulationStatus === "accepted") {
+            strokeColor = "hsl(var(--success))";
+            fillColor = "hsl(152 60% 40% / 0.1)";
+          } else if (isActive && simulationStatus === "rejected") {
+            strokeColor = "hsl(var(--destructive))";
+            fillColor = "hsl(0 72% 51% / 0.1)";
+          } else if (isActive) {
+            strokeColor = "hsl(var(--primary))";
+            fillColor = "hsl(220 70% 50% / 0.08)";
+          } else if (isSelected) {
+            strokeColor = "hsl(var(--primary))";
+          }
+
+          return (
+            <g
+              key={state.id}
+              className="state-node cursor-grab active:cursor-grabbing"
+              onPointerDown={(e) => handleStatePointerDown(e, state.id)}
+              onPointerMove={handlePointerMove}
+              onPointerUp={endInteraction}
+              onPointerCancel={endInteraction}
+              filter={isActive ? "url(#glow-active)" : undefined}
             >
-              start
-            </text>
-          </g>
-        ))}
-
-      {/* States */}
-      {states.map((state) => {
-        const isActive = activeStates.includes(state.id);
-        const isSelected = selectedState === state.id;
-
-        let strokeColor = "hsl(var(--border))";
-        let fillColor = "hsl(var(--card))";
-
-        if (isActive && simulationStatus === "accepted") {
-          strokeColor = "hsl(var(--success))";
-          fillColor = "hsl(152 60% 40% / 0.1)";
-        } else if (isActive && simulationStatus === "rejected") {
-          strokeColor = "hsl(var(--destructive))";
-          fillColor = "hsl(0 72% 51% / 0.1)";
-        } else if (isActive) {
-          strokeColor = "hsl(var(--primary))";
-          fillColor = "hsl(220 70% 50% / 0.08)";
-        } else if (isSelected) {
-          strokeColor = "hsl(var(--primary))";
-        }
-
-        return (
-          <g
-            key={state.id}
-            className="state-node cursor-grab active:cursor-grabbing"
-            onPointerDown={(e) => handleMouseDown(e, state.id)}
-            filter={isActive ? "url(#glow-active)" : undefined}
-          >
-            {state.isAccept && (
+              {isSelected && (
+                <circle
+                  cx={state.x}
+                  cy={state.y}
+                  r={STATE_RADIUS + 10}
+                  fill="hsl(var(--primary) / 0.07)"
+                  stroke="hsl(var(--primary) / 0.4)"
+                  strokeDasharray="4 4"
+                  strokeWidth="1"
+                />
+              )}
+              {state.isAccept && (
+                <circle
+                  cx={state.x}
+                  cy={state.y}
+                  r={STATE_RADIUS + 4}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth="1.2"
+                />
+              )}
               <circle
                 cx={state.x}
                 cy={state.y}
-                r={STATE_RADIUS + 4}
-                fill="none"
+                r={STATE_RADIUS}
+                fill={fillColor}
                 stroke={strokeColor}
-                strokeWidth="1.2"
+                strokeWidth="1.5"
               />
-            )}
-            <circle
-              cx={state.x}
-              cy={state.y}
-              r={STATE_RADIUS}
-              fill={fillColor}
-              stroke={strokeColor}
-              strokeWidth="1.5"
-            />
-            <text
-              x={state.x}
-              y={state.y + 1}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              className="fill-foreground text-[11px] font-mono font-medium pointer-events-none select-none"
-            >
-              {state.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+              <text
+                x={state.x}
+                y={state.y + 1}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="fill-foreground text-[11px] font-mono font-medium pointer-events-none select-none"
+              >
+                {state.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Canvas controls */}
+      <div className="absolute top-3 right-3 flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={() => zoomAt(1 / 1.2)}
+          className="w-8 h-8 rounded-md border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center"
+          aria-label="Zoom in"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => zoomAt(1.2)}
+          className="w-8 h-8 rounded-md border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center"
+          aria-label="Zoom out"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={fit}
+          className="w-8 h-8 rounded-md border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center"
+          aria-label="Fit to view"
+        >
+          <Maximize2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
   );
 };
 
